@@ -1,0 +1,12 @@
+{
+  "columns": [
+    { "key": "source", "label": "Source", "type": "string" },
+    { "key": "count", "label": "Count", "type": "number" }
+  ],
+  "rows": [
+    { "source": "Word of Mouth", "count": 18327 },
+    { "source": "Facebook", "count": 7100 },
+    { "source": "Google", "count": 5200 }
+  ],
+  "page": { "offset": 0, "limit": 11, "total": 3 }
+}

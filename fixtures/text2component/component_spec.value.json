@@ -1,0 +1,22 @@
+{
+  "spec_version": 2,
+  "title": "Total Inquiries",
+  "type": "value",
+  "query": {
+    "sql": "SELECT COUNT(*) AS count FROM inquiries",
+    "params": {}
+  },
+  "layout": { "x": 0, "y": 0, "w": 3, "h": 2 },
+  "data_map": {
+    "value_field": "count",
+    "label": "Total Inquiries"
+  },
+  "config": {
+    "style": "normal",
+    "separator_style": "100,000.00",
+    "min_decimal_places": 0,
+    "multiply_by": 1,
+    "prefix": "",
+    "suffix": ""
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "spec_version": 2,
+  "title": "Inquiries by Source",
+  "type": "table",
+  "query": {
+    "sql": "SELECT source, COUNT(*) AS count FROM inquiries GROUP BY source ORDER BY count DESC",
+    "params": {}
+  },
+  "layout": { "x": 0, "y": 0, "w": 8, "h": 6 },
+  "data_map": {
+    "columns": ["source", "count"]
+  },
+  "config": {
+    "columns": [
+      { "key": "source", "label": "Source", "visible": true, "align": "left" },
+      {
+        "key": "count",
+        "label": "Count",
+        "visible": true,
+        "align": "right",
+        "format": { "separator_style": "100,000", "min_decimal_places": 0 }
+      }
+    ],
+    "conditional_formatting": [],
+    "pagination": { "page_size": 11 }
+  }
+}

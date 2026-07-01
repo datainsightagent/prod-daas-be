@@ -1,0 +1,19 @@
+{
+  "spec_version": 2,
+  "title": "Top Products by Revenue",
+  "type": "row",
+  "query": {
+    "sql": "SELECT product_name, SUM(revenue) AS total FROM sales GROUP BY product_name ORDER BY total ASC LIMIT 20",
+    "params": {}
+  },
+  "layout": { "x": 0, "y": 0, "w": 6, "h": 4 },
+  "data_map": {
+    "y_field": "product_name",
+    "x_field": "total"
+  },
+  "config": {
+    "display": {
+      "series": [{ "key": "total", "label": "Revenue", "axis": "auto" }]
+    }
+  }
+}

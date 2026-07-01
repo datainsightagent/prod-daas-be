@@ -1,0 +1,8 @@
+{
+  "total": 30600,
+  "slices": [
+    { "name": "Word of Mouth", "value": 18300, "percentage": 59.8 },
+    { "name": "Facebook", "value": 7100, "percentage": 23.2 },
+    { "name": "Google", "value": 5200, "percentage": 17.0 }
+  ]
+}

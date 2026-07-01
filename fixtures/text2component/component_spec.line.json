@@ -1,0 +1,47 @@
+{
+  "spec_version": 2,
+  "title": "Inquiries Over Time",
+  "type": "line",
+  "query": {
+    "sql": "SELECT month, COUNT(*) AS count FROM inquiries GROUP BY month ORDER BY month",
+    "params": {}
+  },
+  "layout": { "x": 0, "y": 0, "w": 6, "h": 4 },
+  "data_map": {
+    "x_field": "month",
+    "y_field": "count",
+    "series_field": null
+  },
+  "config": {
+    "display": {
+      "goal_line": { "enabled": false, "value": null },
+      "show_values": false,
+      "series": [
+        {
+          "key": "count",
+          "label": "Count",
+          "display_type": "line",
+          "line_style": "straight",
+          "show_dots": "auto",
+          "axis": "auto"
+        }
+      ],
+      "replace_missing_values": "linear_interpolated"
+    },
+    "axes": {
+      "x_scale": "timeseries",
+      "y_scale": "linear",
+      "show_x_axis": true,
+      "show_y_axis": true,
+      "auto_y_range": true,
+      "y_min": null,
+      "y_max": null
+    },
+    "labels": {
+      "show_x_label": true,
+      "x_label": "Month",
+      "show_y_label": true,
+      "y_label": "Count"
+    }
+  }
+}

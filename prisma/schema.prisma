@@ -1,0 +1,645 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum TenantStatus {
+  active
+  suspended
+}
+
+enum UserStatus {
+  active
+  disabled
+}
+
+enum MembershipStatus {
+  active
+  revoked
+}
+
+enum AuditEvent {
+  auth_login
+  auth_refresh
+  auth_logout
+  schema_snapshot_pruned
+}
+
+enum DataSourceConnectionMode {
+  secret_ref
+  inline_dev
+}
+
+enum DataSourceStatus {
+  pending
+  connecting
+  connected
+  error
+  deleted
+}
+
+enum SchemaSnapshotStatus {
+  queued
+  running
+  ready
+  error
+}
+
+enum KnowledgeSource {
+  user
+  agent
+  user_onboarding
+}
+
+enum EntityType {
+  table
+  column
+}
+
+enum OnboardingSessionStatus {
+  active
+  waiting_for_answers
+  complete
+  abandoned
+}
+
+enum AskSessionStatus {
+  processing
+  complete
+  failed
+}
+
+enum AskMessageType {
+  user
+  assistant
+}
+
+enum GenerationLogLevel {
+  info
+  warn
+  error
+}
+
+enum TokenUsageSessionType {
+  ask
+  onboarding
+}
+
+enum FeedbackRating {
+  up
+  down
+}
+
+enum QueryRunPurpose {
+  probe
+  render
+}
+
+enum QueryRunStatus {
+  running
+  completed
+  failed
+  timeout
+  cancelled
+}
+
+enum SchemaChangeType {
+  table_added
+  table_removed
+  column_added
+  column_removed
+  column_type_changed
+}
+
+enum SchemaChangeSeverity {
+  info
+  warning
+  critical
+}
+
+enum TenantProvisioningStatus {
+  pending
+  ready
+  failed
+}
+
+model Tenant {
+  id                 String                   @id @default(cuid()) @map("tenant_id")
+  name               String
+  slug               String                   @unique
+  plan               String?
+  status             TenantStatus             @default(active)
+  provisioningStatus TenantProvisioningStatus @default(ready) @map("provisioning_status")
+  tenantDbName       String?                  @map("tenant_db_name")
+  tenantDbHost       String?                  @map("tenant_db_host")
+  tenantDbPort       Int?                     @map("tenant_db_port")
+  provisionedAt      DateTime?                @map("provisioned_at")
+  provisioningError  String?                  @map("provisioning_error") @db.VarChar(1024)
+  users              User[]
+  memberships        Membership[]
+  refreshTokens      RefreshToken[]
+  auditLogs          AuditLog[]
+  dataSources        DataSource[]
+  schemaSnapshots    SchemaSnapshot[]
+  glossaryTerms      GlossaryTerm[]
+  businessRules      BusinessRule[]
+  onboardingSessions OnboardingSession[]
+  onboardingAnswers  OnboardingAnswer[]
+  askSessions        AskSession[]
+  askMessages        AskMessage[]
+  askGenerationLogs  AskGenerationLog[]
+  tokenUsageRecords  TokenUsage[]
+  feedbackRecords    Feedback[]
+  queryRuns          QueryRun[]
+  queryResults       QueryResult[]
+  entityDescriptions EntityDescription[]
+  schemaChangeEvents SchemaChangeEvent[]
+  createdAt          DateTime                 @default(now()) @map("created_at")
+  updatedAt          DateTime                 @updatedAt @map("updated_at")
+
+  @@map("tenants")
+}
+
+model User {
+  id            String         @id @default(cuid()) @map("user_id")
+  tenantId      String         @map("tenant_id")
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  email         String
+  passwordHash  String         @map("password_hash")
+  name          String
+  status        UserStatus     @default(active)
+  memberships   Membership[]
+  refreshTokens RefreshToken[]
+  auditLogs     AuditLog[]
+  acknowledgedSchemaChangeEvents SchemaChangeEvent[] @relation("schema_change_event_acknowledger")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  @@unique([tenantId, email], map: "users_tenant_id_email_key")
+  @@index([tenantId], map: "users_tenant_id_idx")
+  @@map("users")
+}
+
+model Role {
+  id          String                 @id @default(cuid()) @map("role_id")
+  name        String                 @unique
+  memberships Membership[]
+  permissions RolePermissionBridge[]
+  createdAt   DateTime               @default(now()) @map("created_at")
+  updatedAt   DateTime               @updatedAt @map("updated_at")
+
+  @@map("roles")
+}
+
+model Permission {
+  id        String                 @id @default(cuid()) @map("permission_id")
+  key       String                 @unique
+  roles     RolePermissionBridge[]
+  createdAt DateTime               @default(now()) @map("created_at")
+  updatedAt DateTime               @updatedAt @map("updated_at")
+
+  @@map("permissions")
+}
+
+model RolePermissionBridge {
+  id           String     @id @default(cuid()) @map("role_permission_id")
+  roleId       String     @map("role_id")
+  permissionId String     @map("permission_id")
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now()) @map("created_at")
+
+  @@unique([roleId, permissionId], map: "roles_permissions_unique")
+  @@index([permissionId], map: "roles_permissions_permission_id_idx")
+  @@map("roles_permissions")
+}
+
+model Membership {
+  id         String           @id @default(cuid()) @map("membership_id")
+  tenantId   String           @map("tenant_id")
+  userId     String           @map("user_id")
+  roleId     String           @map("role_id")
+  status     MembershipStatus @default(active)
+  tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       Role             @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  createdAt  DateTime         @default(now()) @map("created_at")
+  updatedAt  DateTime         @updatedAt @map("updated_at")
+
+  @@unique([tenantId, userId], map: "memberships_tenant_user_unique")
+  @@index([userId], map: "memberships_user_id_idx")
+  @@index([roleId], map: "memberships_role_id_idx")
+  @@map("memberships")
+}
+
+model RefreshToken {
+  id              String        @id @default(cuid()) @map("refresh_token_id")
+  jti             String        @unique
+  userId          String        @map("user_id")
+  tenantId        String        @map("tenant_id")
+  tokenHash       String        @map("token_hash")
+  expiresAt       DateTime      @map("expires_at")
+  revokedAt       DateTime?     @map("revoked_at")
+  replacedByToken String?       @map("replaced_by_token")
+  ip              String?       @db.VarChar(64)
+  userAgent       String?       @map("user_agent")
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  @@index([userId], map: "refresh_tokens_user_id_idx")
+  @@index([tenantId], map: "refresh_tokens_tenant_id_idx")
+  @@index([expiresAt], map: "refresh_tokens_expires_at_idx")
+  @@map("refresh_tokens")
+}
+
+model LoginFailureAttempt {
+  id         String   @id @default(cuid()) @map("login_failure_attempt_id")
+  email      String
+  tenantSlug String   @map("tenant_slug")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([email, tenantSlug, createdAt], map: "login_failures_lookup_idx")
+  @@map("login_failure_attempts")
+}
+
+model AuditLog {
+  id        String    @id @default(cuid()) @map("audit_log_id")
+  event     AuditEvent
+  userId    String?   @map("user_id")
+  tenantId  String?   @map("tenant_id")
+  ip        String?   @db.VarChar(64)
+  userAgent String?   @map("user_agent")
+  metadata  Json?
+  user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  tenant    Tenant?   @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([event, createdAt], map: "audit_logs_event_created_at_idx")
+  @@index([userId], map: "audit_logs_user_id_idx")
+  @@index([tenantId], map: "audit_logs_tenant_id_idx")
+  @@map("audit_logs")
+}
+
+model DbEngine {
+  code                 String      @id
+  displayName          String      @map("display_name")
+  queryType            String      @map("query_type")
+  connectionParamSchema Json       @map("connection_params_schema")
+  dataSources          DataSource[]
+  createdAt            DateTime    @default(now()) @map("created_at")
+  updatedAt            DateTime    @updatedAt @map("updated_at")
+
+  @@map("db_engine")
+}
+
+model DataSource {
+  id             String                   @id @default(cuid()) @map("data_source_id")
+  tenantId       String                   @map("tenant_id")
+  tenant         Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  name           String
+  type           String
+  engine         DbEngine                 @relation(fields: [type], references: [code], onDelete: Restrict)
+  host           String
+  port           Int
+  databaseName   String                   @map("database_name")
+  username       String
+  connectionMode DataSourceConnectionMode @default(secret_ref) @map("connection_mode")
+  secretRef      String?                  @map("secret_ref")
+  encryptedSecretPayload Json?            @map("encrypted_secret_payload")
+  status         DataSourceStatus         @default(pending)
+  onboarded      Boolean                  @default(false)
+  deletedAt      DateTime?                @map("deleted_at")
+  statusChecks   ConnectionStatus[]
+  schemaSnapshots SchemaSnapshot[]
+  schemaChangeEvents SchemaChangeEvent[]
+  onboardingSessions OnboardingSession[]
+  askSessions        AskSession[]
+  queryRuns          QueryRun[]
+  createdAt      DateTime                 @default(now()) @map("created_at")
+  updatedAt      DateTime                 @updatedAt @map("updated_at")
+
+  @@index([tenantId], map: "data_sources_tenant_id_idx")
+  @@index([type], map: "data_sources_type_idx")
+  @@index([status], map: "data_sources_status_idx")
+  @@map("data_sources")
+}
+
+model ConnectionStatus {
+  id           String           @id @default(cuid()) @map("status_id")
+  dataSourceId String           @map("data_source_id")
+  dataSource   DataSource       @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+  status       DataSourceStatus
+  lastCheckedAt DateTime        @default(now()) @map("last_checked_at")
+  errorCode    String?          @map("error_code")
+  errorMessage String?          @map("error_message")
+  createdAt    DateTime         @default(now()) @map("created_at")
+
+  @@index([dataSourceId, createdAt], map: "connection_status_data_source_created_idx")
+  @@map("connection_status")
+}
+
+model SchemaSnapshot {
+  snapshotId   String               @id @default(cuid()) @map("snapshot_id")
+  tenantId     String               @map("tenant_id")
+  dataSourceId String               @map("data_source_id")
+  version      Int
+  attemptCount Int                  @default(0) @map("attempt_count")
+  lastAttemptAt DateTime?           @map("last_attempt_at")
+  nextRetryAt  DateTime?            @map("next_retry_at")
+  capturedAt   DateTime?            @map("captured_at")
+  status       SchemaSnapshotStatus @default(queued)
+  errorCode    String?              @map("error_code")
+  errorMessage String?              @map("error_message") @db.VarChar(1024)
+  payload      Json?
+  tenant       Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  dataSource   DataSource           @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+  onboardingSessions OnboardingSession[]
+  schemaChangeEvents SchemaChangeEvent[] @relation("schema_change_event_snapshot")
+  previousForSchemaChangeEvents SchemaChangeEvent[] @relation("schema_change_event_previous_snapshot")
+  createdAt    DateTime             @default(now()) @map("created_at")
+  updatedAt    DateTime             @updatedAt @map("updated_at")
+
+  @@unique([tenantId, dataSourceId, version], map: "schema_snapshots_tenant_data_source_version_key")
+  @@index([tenantId, dataSourceId, version(sort: Desc)], map: "schema_snapshots_tenant_data_source_version_desc_idx")
+  @@index([status], map: "schema_snapshots_status_idx")
+  @@index([status, nextRetryAt, createdAt], map: "schema_snapshots_claim_lookup_idx")
+  @@index([dataSourceId, capturedAt], map: "schema_snapshots_data_source_captured_idx")
+  @@map("schema_snapshots")
+}
+
+model SchemaChangeEvent {
+  changeEventId       String               @id @default(cuid()) @map("change_event_id")
+  tenantId            String               @map("tenant_id")
+  dataSourceId        String               @map("data_source_id")
+  snapshotId          String               @map("snapshot_id")
+  previousSnapshotId  String?              @map("previous_snapshot_id")
+  changeType          SchemaChangeType     @map("change_type")
+  tableName           String?              @map("table_name")
+  columnName          String?              @map("column_name")
+  oldValue            Json?                @map("old_value")
+  newValue            Json?                @map("new_value")
+  severity            SchemaChangeSeverity
+  acknowledged        Boolean              @default(false)
+  acknowledgedAt      DateTime?            @map("acknowledged_at")
+  acknowledgedBy      String?              @map("acknowledged_by")
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  dataSource          DataSource           @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+  snapshot            SchemaSnapshot       @relation("schema_change_event_snapshot", fields: [snapshotId], references: [snapshotId], onDelete: Cascade)
+  previousSnapshot    SchemaSnapshot?      @relation("schema_change_event_previous_snapshot", fields: [previousSnapshotId], references: [snapshotId], onDelete: SetNull)
+  acknowledgedByUser  User?                @relation("schema_change_event_acknowledger", fields: [acknowledgedBy], references: [id], onDelete: SetNull)
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
+
+  @@index([tenantId, acknowledged, createdAt], map: "schema_change_events_tenant_ack_created_idx")
+  @@index([dataSourceId, snapshotId], map: "schema_change_events_data_source_snapshot_idx")
+  @@index([snapshotId], map: "schema_change_events_snapshot_id_idx")
+  @@index([previousSnapshotId], map: "schema_change_events_prev_snapshot_id_idx")
+  @@map("schema_change_events")
+}
+
+model GlossaryTerm {
+  termId         String          @id @default(cuid()) @map("term_id")
+  tenantId       String          @map("tenant_id")
+  term           String
+  termNormalized String          @map("term_normalized")
+  definition     String          @db.VarChar(2000)
+  source         KnowledgeSource @default(user_onboarding)
+  confidence     Decimal         @default(1.0) @db.Decimal(4, 3)
+  deletedAt      DateTime?       @map("deleted_at")
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  @@unique([tenantId, termNormalized], map: "glossary_terms_tenant_term_normalized_key")
+  @@index([tenantId, deletedAt], map: "glossary_terms_tenant_deleted_idx")
+  @@map("glossary_terms")
+}
+
+model BusinessRule {
+  ruleId       String          @id @default(cuid()) @map("rule_id")
+  tenantId     String          @map("tenant_id")
+  name         String
+  expression   String          @db.Text
+  description  String?         @db.VarChar(2000)
+  source       KnowledgeSource @default(user_onboarding)
+  confidence   Decimal         @default(1.0) @db.Decimal(4, 3)
+  deletedAt    DateTime?       @map("deleted_at")
+  tenant       Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
+
+  @@unique([tenantId, name], map: "business_rules_tenant_name_key")
+  @@index([tenantId, deletedAt], map: "business_rules_tenant_deleted_idx")
+  @@map("business_rules")
+}
+
+model OnboardingAnswer {
+  answerId      String    @id @default(cuid()) @map("answer_id")
+  sessionId     String    @map("session_id")
+  tenantId      String    @map("tenant_id")
+  questionId    String    @map("question_id")
+  questionText  String    @map("question_text") @db.Text
+  answerText    String    @map("answer_text") @db.Text
+  isUnknown     Boolean   @default(false) @map("is_unknown")
+  metadata      Json?
+  session       OnboardingSession @relation(fields: [sessionId], references: [sessionId], onDelete: Cascade)
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@index([tenantId, sessionId, createdAt], map: "onboarding_answers_tenant_session_created_idx")
+  @@index([tenantId, questionId], map: "onboarding_answers_tenant_question_idx")
+  @@map("onboarding_answers")
+}
+
+model OnboardingSession {
+  sessionId     String                  @id @default(cuid()) @map("session_id")
+  tenantId      String                  @map("tenant_id")
+  dataSourceId  String                  @map("data_source_id")
+  snapshotId    String                  @map("snapshot_id")
+  status        OnboardingSessionStatus @default(active)
+  roundNumber   Int                     @default(0) @map("round_number")
+  questionCount Int                     @default(0) @map("question_count")
+  confidence    Decimal?                @db.Decimal(4, 3)
+  metadata      Json?
+  tenant        Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  dataSource    DataSource              @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+  snapshot      SchemaSnapshot          @relation(fields: [snapshotId], references: [snapshotId], onDelete: Restrict)
+  answers       OnboardingAnswer[]
+  tokenUsageRecords TokenUsage[]
+  createdAt     DateTime                @default(now()) @map("created_at")
+  updatedAt     DateTime                @updatedAt @map("updated_at")
+
+  @@index([tenantId, dataSourceId, createdAt], map: "onboarding_sessions_tenant_data_source_created_idx")
+  @@index([tenantId, status, updatedAt], map: "onboarding_sessions_tenant_status_updated_idx")
+  @@map("onboarding_sessions")
+}
+
+model AskSession {
+  sessionId       String              @id @default(cuid()) @map("session_id")
+  tenantId        String              @map("tenant_id")
+  userId          String              @map("user_id")
+  dataSourceId    String              @map("data_source_id")
+  question        String              @db.VarChar(2000)
+  title           String?             @db.VarChar(200)
+  status          AskSessionStatus    @default(processing)
+  tenant          Tenant              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  dataSource      DataSource          @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+  messages        AskMessage[]
+  generationLogs  AskGenerationLog[]
+  tokenUsageRecords TokenUsage[]
+  feedbackRecords   Feedback[]
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+
+  @@index([tenantId, userId, updatedAt(sort: Desc)], map: "ask_sessions_tenant_user_updated_idx")
+  @@index([tenantId, dataSourceId], map: "ask_sessions_tenant_data_source_idx")
+  @@map("ask_sessions")
+}
+
+model AskMessage {
+  messageId       String             @id @default(cuid()) @map("message_id")
+  sessionId       String             @map("session_id")
+  tenantId        String             @map("tenant_id")
+  type            AskMessageType
+  content         String             @db.Text
+  sequenceOrder   Int                @map("sequence_order")
+  parentMessageId String?            @map("parent_message_id")
+  metadata        Json?
+  session         AskSession         @relation(fields: [sessionId], references: [sessionId], onDelete: Cascade)
+  tenant          Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  parentMessage   AskMessage?        @relation("AskMessageThread", fields: [parentMessageId], references: [messageId], onDelete: SetNull)
+  childMessages   AskMessage[]       @relation("AskMessageThread")
+  generationLogs  AskGenerationLog[]
+  tokenUsageRecords TokenUsage[]
+  feedbackRecords   Feedback[]
+  createdAt       DateTime           @default(now()) @map("created_at")
+
+  @@unique([sessionId, sequenceOrder], map: "messages_session_sequence_unique")
+  @@index([sessionId, sequenceOrder], map: "messages_session_sequence_idx")
+  @@index([tenantId, sessionId], map: "messages_tenant_session_idx")
+  @@map("messages")
+}
+
+model TokenUsage {
+  usageId              String                @id @default(cuid()) @map("usage_id")
+  tenantId             String                @map("tenant_id")
+  sessionType          TokenUsageSessionType @map("session_type")
+  askSessionId         String?               @map("ask_session_id")
+  onboardingSessionId  String?               @map("onboarding_session_id")
+  messageId            String?               @map("message_id")
+  model                String                @db.VarChar(120)
+  inputTokens          Int                   @default(0) @map("input_tokens")
+  outputTokens         Int                   @default(0) @map("output_tokens")
+  totalTokens          Int                   @default(0) @map("total_tokens")
+  tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  askSession           AskSession?           @relation(fields: [askSessionId], references: [sessionId], onDelete: Cascade)
+  onboardingSession    OnboardingSession?    @relation(fields: [onboardingSessionId], references: [sessionId], onDelete: Cascade)
+  askMessage           AskMessage?           @relation(fields: [messageId], references: [messageId], onDelete: SetNull)
+  createdAt            DateTime              @default(now()) @map("created_at")
+
+  @@index([tenantId, createdAt], map: "token_usage_tenant_created_idx")
+  @@index([askSessionId, createdAt], map: "token_usage_ask_session_created_idx")
+  @@index([onboardingSessionId, createdAt], map: "token_usage_onboarding_session_created_idx")
+  @@index([messageId], map: "token_usage_message_idx")
+  @@map("token_usage")
+}
+
+model Feedback {
+  feedbackId String         @id @default(cuid()) @map("feedback_id")
+  tenantId   String         @map("tenant_id")
+  messageId  String         @map("message_id")
+  sessionId  String         @map("session_id")
+  userId     String         @map("user_id")
+  rating     FeedbackRating
+  comment    String?        @db.Text
+  metadata   Json?
+  tenant     Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  askSession AskSession     @relation(fields: [sessionId], references: [sessionId], onDelete: Cascade)
+  askMessage AskMessage     @relation(fields: [messageId], references: [messageId], onDelete: Cascade)
+  createdAt  DateTime       @default(now()) @map("created_at")
+
+  @@unique([messageId, userId], map: "feedback_message_user_unique")
+  @@index([tenantId, sessionId, createdAt], map: "feedback_tenant_session_created_idx")
+  @@index([sessionId, createdAt], map: "feedback_session_created_idx")
+  @@map("feedback")
+}
+
+model AskGenerationLog {
+  logId         String             @id @default(cuid()) @map("log_id")
+  sessionId     String             @map("session_id")
+  messageId     String             @map("message_id")
+  tenantId      String             @map("tenant_id")
+  step          String             @db.VarChar(100)
+  level         GenerationLogLevel @default(info)
+  message       String             @db.Text
+  sequenceOrder Int                @map("sequence_order")
+  session       AskSession         @relation(fields: [sessionId], references: [sessionId], onDelete: Cascade)
+  askMessage    AskMessage         @relation(fields: [messageId], references: [messageId], onDelete: Cascade)
+  tenant        Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  createdAt     DateTime           @default(now()) @map("created_at")
+
+  @@index([sessionId, messageId, sequenceOrder], map: "generation_logs_session_message_sequence_idx")
+  @@index([tenantId, sessionId], map: "generation_logs_tenant_session_idx")
+  @@map("generation_logs")
+}
+
+model EntityDescription {
+  entityId      String          @id @default(cuid()) @map("entity_id")
+  tenantId      String          @map("tenant_id")
+  entityType    EntityType      @map("entity_type")
+  entityName    String          @map("entity_name")
+  description   String          @db.VarChar(2000)
+  source        KnowledgeSource @default(agent)
+  confidence    Decimal         @default(1.0) @db.Decimal(4, 3)
+  metadata      Json?
+  tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+
+  @@index([tenantId, entityType, entityName], map: "entity_descriptions_tenant_entity_lookup_idx")
+  @@map("entity_descriptions")
+}
+
+model QueryRun {
+  runId        String          @id @default(cuid()) @map("run_id")
+  tenantId     String          @map("tenant_id")
+  dataSourceId String          @map("data_source_id")
+  sql          String          @db.Text
+  purpose      QueryRunPurpose @default(probe)
+  status       QueryRunStatus  @default(running)
+  rowCount     Int             @default(0) @map("row_count")
+  truncated    Boolean         @default(false)
+  errorCode    String?         @map("error_code") @db.VarChar(64)
+  errorMessage String?         @map("error_message") @db.Text
+  startedAt    DateTime        @default(now()) @map("started_at")
+  finishedAt   DateTime?       @map("finished_at")
+  tenant       Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  dataSource   DataSource      @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+  result       QueryResult?
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
+
+  @@index([tenantId, dataSourceId, startedAt(sort: Desc)], map: "query_runs_tenant_data_source_started_idx")
+  @@index([tenantId, status, startedAt(sort: Desc)], map: "query_runs_tenant_status_started_idx")
+  @@map("query_runs")
+}
+
+model QueryResult {
+  resultId  String   @id @default(cuid()) @map("result_id")
+  runId     String   @unique @map("run_id")
+  tenantId  String   @map("tenant_id")
+  schema    Json
+  rows      Json
+  run       QueryRun @relation(fields: [runId], references: [runId], onDelete: Cascade)
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId, createdAt], map: "query_results_tenant_created_idx")
+  @@map("query_results")
+}

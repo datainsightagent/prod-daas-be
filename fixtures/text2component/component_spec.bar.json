@@ -1,0 +1,38 @@
+{
+  "spec_version": 2,
+  "title": "Inquiries by Source",
+  "type": "bar",
+  "query": {
+    "sql": "SELECT source, COUNT(*) AS count FROM inquiries GROUP BY source ORDER BY count DESC LIMIT 50",
+    "params": {}
+  },
+  "layout": { "x": 0, "y": 0, "w": 6, "h": 4 },
+  "data_map": {
+    "x_field": "source",
+    "y_field": "count",
+    "series_field": null
+  },
+  "config": {
+    "display": {
+      "stacking": "none",
+      "goal_line": { "enabled": false, "value": null },
+      "show_values": false,
+      "series": [{ "key": "count", "label": "Count", "axis": "auto" }]
+    },
+    "axes": {
+      "x_scale": "ordinal",
+      "y_scale": "linear",
+      "show_x_axis": true,
+      "show_y_axis": true,
+      "auto_y_range": true,
+      "y_min": null,
+      "y_max": null
+    },
+    "labels": {
+      "show_x_label": true,
+      "x_label": "Source",
+      "show_y_label": true,
+      "y_label": "Count"
+    }
+  }
+}
