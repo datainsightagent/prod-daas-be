@@ -59,6 +59,29 @@ function formatValueDataset(spec, rows) {
   };
 }
 
+function orderColumnsByConfig(columnKeys, configuredColumns) {
+  if (!Array.isArray(configuredColumns) || configuredColumns.length === 0) {
+    return columnKeys;
+  }
+
+  const configuredKeys = configuredColumns
+    .map((col) => col?.key)
+    .filter((key) => typeof key === "string" && key.trim().length > 0);
+  if (configuredKeys.length === 0) {
+    return columnKeys;
+  }
+
+  const columnKeySet = new Set(columnKeys);
+  const ordered = configuredKeys.filter((key) => columnKeySet.has(key));
+  for (const key of columnKeys) {
+    if (!ordered.includes(key)) {
+      ordered.push(key);
+    }
+  }
+
+  return ordered.length > 0 ? ordered : columnKeys;
+}
+
 function formatTableDataset(spec, rows, schema, opts = {}) {
   const safeRows = Array.isArray(rows) ? rows : [];
   const selectedColumns = Array.isArray(spec?.data_map?.columns)
@@ -82,11 +105,13 @@ function formatTableDataset(spec, rows, schema, opts = {}) {
     selectedColumns.length > 0 &&
     selectedColumns.some((key) => schemaByName.has(key) || fallbackColumnsFromRows.includes(key));
 
-  const effectiveColumns = requestedColumnsValid
+  const rawEffectiveColumns = requestedColumnsValid
     ? selectedColumns
     : fallbackColumnsFromSchema.length > 0
       ? fallbackColumnsFromSchema
       : fallbackColumnsFromRows;
+
+  const effectiveColumns = orderColumnsByConfig(rawEffectiveColumns, configuredColumns);
 
   const columns = effectiveColumns.map((key) => {
     const config = configuredByKey.get(key);
