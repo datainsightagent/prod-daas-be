@@ -61,14 +61,34 @@ function formatValueDataset(spec, rows) {
 
 function formatTableDataset(spec, rows, schema, opts = {}) {
   const safeRows = Array.isArray(rows) ? rows : [];
-  const selectedColumns = spec?.data_map?.columns ?? [];
+  const selectedColumns = Array.isArray(spec?.data_map?.columns)
+    ? spec.data_map.columns.filter((col) => typeof col === "string" && col.trim().length > 0)
+    : [];
   const configuredColumns = Array.isArray(spec?.config?.columns) ? spec.config.columns : [];
   const configuredByKey = new Map(configuredColumns.map((col) => [col.key, col]));
   const schemaByName = new Map(
     (Array.isArray(schema) ? schema : []).map((entry) => [entry?.name, entry?.type]),
   );
 
-  const columns = selectedColumns.map((key) => {
+  const fallbackColumnsFromSchema = (Array.isArray(schema) ? schema : [])
+    .map((entry) => (typeof entry?.name === "string" ? entry.name : ""))
+    .filter(Boolean);
+  const fallbackColumnsFromRows =
+    safeRows.length > 0 && safeRows[0] && typeof safeRows[0] === "object" && !Array.isArray(safeRows[0])
+      ? Object.keys(safeRows[0])
+      : [];
+
+  const requestedColumnsValid =
+    selectedColumns.length > 0 &&
+    selectedColumns.some((key) => schemaByName.has(key) || fallbackColumnsFromRows.includes(key));
+
+  const effectiveColumns = requestedColumnsValid
+    ? selectedColumns
+    : fallbackColumnsFromSchema.length > 0
+      ? fallbackColumnsFromSchema
+      : fallbackColumnsFromRows;
+
+  const columns = effectiveColumns.map((key) => {
     const config = configuredByKey.get(key);
     return {
       key,
@@ -79,7 +99,7 @@ function formatTableDataset(spec, rows, schema, opts = {}) {
 
   const normalizedRows = safeRows.map((row) => {
     const output = {};
-    for (const column of selectedColumns) {
+    for (const column of effectiveColumns) {
       output[column] =
         row && typeof row === "object" && !Array.isArray(row) && column in row
           ? row[column]
