@@ -1,7 +1,9 @@
 import { assertRequiredRole } from "./auth.service.js";
 import { resolveDomainPrismaForAuth } from "../lib/tenantPrismaRouting.js";
 import {
+  askRenderResultSchemaForType,
   parseAskBody,
+  parseAskRenderBody,
   parseAskMessageIdParam,
   parseAskResumeBody,
   parseAskSessionIdParam,
@@ -13,6 +15,7 @@ import {
   getLatestReadySchemaSnapshotPayload,
   getTenantScopedDataSourceOrFail,
 } from "./dataSource.service.js";
+import { QueryServiceError, runQuery } from "./queryExecution.service.js";
 import { startText2ComponentQuery, resumeText2ComponentQuery } from "./daasAi.client.js";
 import { logger } from "../lib/logger.js";
 import {
@@ -26,6 +29,7 @@ import {
   mapStreamLogToGenerationLogInput,
   mapTokenUsageInput,
 } from "./ask.mapper.js";
+import { formatData } from "./formatData.service.js";
 
 export class AskServiceError extends Error {
   constructor(message, statusCode, errorCode) {
@@ -478,6 +482,70 @@ export async function getAskSessionTokenUsageSummary({ auth, sessionId }) {
     latest_recorded_at:
       usageRows.length > 0 ? usageRows[usageRows.length - 1].createdAt : null,
   };
+}
+
+export async function renderAskSession({ auth, sessionId, body }) {
+  assertRequiredRole(auth, ["tenant_admin", "analyst"]);
+
+  const paramParsed = parseAskSessionIdParam({ session_id: sessionId });
+  if (!paramParsed.success) {
+    throw new AskServiceError("Invalid session id", 400, "validation_error");
+  }
+
+  const parsed = parseAskRenderBody(body);
+  if (!parsed.success) {
+    throw new AskServiceError("Invalid render payload", 400, "validation_error");
+  }
+
+  const domainPrisma = await resolveDomainPrismaForAuth(auth);
+  const session = await getOwnedAskSessionOrFail({
+    domainPrisma,
+    sessionId: paramParsed.data.session_id,
+    tenantId: auth.tenantId,
+    userId: auth.userId,
+  });
+
+  const { sql, component_spec: componentSpec } = parsed.data;
+  const startedAt = Date.now();
+
+  let queryResult;
+  try {
+    queryResult = await runQuery({
+      tenantId: auth.tenantId,
+      dataSourceId: session.dataSourceId,
+      sql,
+      purpose: "render",
+      rowLimit: 1000,
+    });
+  } catch (error) {
+    if (error instanceof QueryServiceError) {
+      throw new AskServiceError(error.message, error.statusCode, error.errorCode);
+    }
+    throw error;
+  }
+
+  const dataset = formatData(
+    componentSpec,
+    queryResult.rows ?? [],
+    queryResult.schema ?? [],
+    { rowCount: queryResult.row_count ?? 0 },
+  );
+
+  const payload = {
+    component_spec: componentSpec,
+    dataset,
+    meta: {
+      row_count: queryResult.row_count ?? 0,
+      processing_time_ms: Date.now() - startedAt,
+    },
+  };
+
+  const resultValidation = askRenderResultSchemaForType(componentSpec.type).safeParse(payload);
+  if (!resultValidation.success) {
+    throw new AskServiceError("Failed to format rendered dataset", 500, "format_error");
+  }
+
+  return resultValidation.data;
 }
 
 export async function saveAskTurn({ auth, sessionId, body }) {
