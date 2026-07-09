@@ -6,6 +6,7 @@ vi.mock("../src/services/ask.service.js", async () => {
   const actual = await vi.importActual("../src/services/ask.service.js");
   return {
     ...actual,
+    renderAskSession: vi.fn(),
     submitMessageFeedback: vi.fn(),
     resumeAsk: vi.fn(),
   };
@@ -56,8 +57,83 @@ describe("ask.routes feedback", () => {
   const app = createTestApp();
 
   beforeEach(() => {
+    vi.mocked(askService.renderAskSession).mockReset();
     vi.mocked(askService.submitMessageFeedback).mockReset();
     vi.mocked(askService.resumeAsk).mockReset();
+  });
+
+  it("POST /ask/sessions/:session_id/render returns 200 with widget payload", async () => {
+    vi.mocked(askService.renderAskSession).mockResolvedValue({
+      component_spec: {
+        spec_version: 2,
+        title: "Total Customers",
+        type: "value",
+        query: {
+          sql: "SELECT COUNT(*) AS total_customers FROM customers",
+          params: {},
+        },
+        layout: { x: 0, y: 0, w: 3, h: 2 },
+        data_map: {
+          value_field: "total_customers",
+          label: "Total Customers",
+        },
+        config: {
+          style: "normal",
+          separator_style: "100,000.00",
+          min_decimal_places: 0,
+          multiply_by: 1,
+          prefix: "",
+          suffix: "",
+        },
+      },
+      dataset: {
+        value: 251,
+        label: "Total Customers",
+      },
+      meta: {
+        row_count: 1,
+        processing_time_ms: 22,
+      },
+    });
+
+    const { status, body } = await requestJson(app, "/ask/sessions/sess-1/render", {
+      method: "POST",
+      body: JSON.stringify({
+        sql: "SELECT COUNT(*) AS total_customers FROM customers",
+        component_spec: {
+          spec_version: 2,
+          title: "Total Customers",
+          type: "value",
+          query: {
+            sql: "SELECT COUNT(*) AS total_customers FROM customers",
+            params: {},
+          },
+          layout: { x: 0, y: 0, w: 3, h: 2 },
+          data_map: {
+            value_field: "total_customers",
+            label: "Total Customers",
+          },
+          config: {
+            style: "normal",
+            separator_style: "100,000.00",
+            min_decimal_places: 0,
+            multiply_by: 1,
+            prefix: "",
+            suffix: "",
+          },
+        },
+      }),
+    });
+
+    expect(status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.data.component_spec.type).toBe("value");
+    expect(body.data.dataset.value).toBe(251);
+    expect(askService.renderAskSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "sess-1",
+      }),
+    );
   });
 
   it("POST /ask/resume returns 201 with stream credentials", async () => {
