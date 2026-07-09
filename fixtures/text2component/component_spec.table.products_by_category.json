@@ -1,0 +1,32 @@
+{
+  "spec_version": 2,
+  "id": "f8d33b74-7eee-46b8-b3f7-56246b4c7a07",
+  "title": "How many products exist in each category, aggregated by cate",
+  "type": "table",
+  "query": {
+    "sql": "SELECT c.title AS category, COUNT(p.id) AS product_count\nFROM products p\nJOIN categories c ON p.category_id = c.id\nGROUP BY c.title;",
+    "params": {}
+  },
+  "layout": { "x": 0, "y": 0, "w": 6, "h": 4 },
+  "data_map": {
+    "columns": ["category", "product_count"]
+  },
+  "config": {
+    "columns": [
+      {
+        "key": "category",
+        "label": "Category",
+        "visible": true,
+        "align": "left"
+      },
+      {
+        "key": "product_count",
+        "label": "Product Count",
+        "visible": true,
+        "align": "left"
+      }
+    ],
+    "conditional_formatting": [],
+    "pagination": { "page_size": 11 }
+  }
+}
