@@ -85,6 +85,31 @@ describe("formatData.service", () => {
     expect(dataset.page.limit).toBe(11);
   });
 
+  it("formats Option A table spec with config column labels", () => {
+    const specRaw = loadJson("component_spec.table.products_by_category.json");
+    const parsed = parseComponentSpec(specRaw);
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+
+    const rows = [
+      { category: "Electronics", product_count: 42 },
+      { category: "Books", product_count: 18 },
+    ];
+    const schema = [
+      { name: "category", type: "string" },
+      { name: "product_count", type: "number" },
+    ];
+
+    const dataset = formatData(parsed.data, rows, schema, { rowCount: rows.length });
+
+    expect(dataset.columns).toEqual([
+      { key: "category", label: "Category", type: "string" },
+      { key: "product_count", label: "Product Count", type: "number" },
+    ]);
+    expect(dataset.rows).toEqual(rows);
+    expect(dataset.page.limit).toBe(11);
+  });
+
   it("falls back to real schema columns when requested table columns are invalid", () => {
     const specRaw = loadJson("component_spec.table.json");
     const parsed = parseComponentSpec(specRaw);
