@@ -4,6 +4,7 @@ import {
   getAskSessionHandler,
   listAskSessionsHandler,
   relayAskStreamHandler,
+  renderAskSessionHandler,
   resumeAskHandler,
   saveAskTurnHandler,
   startAskHandler,
@@ -16,6 +17,7 @@ router.post("/", startAskHandler);
 router.post("/resume", resumeAskHandler);
 router.get("/sessions", listAskSessionsHandler);
 router.get("/sessions/:session_id", getAskSessionHandler);
+router.post("/sessions/:session_id/render", renderAskSessionHandler);
 router.get("/sessions/:session_id/stream", relayAskStreamHandler);
 router.get(
   "/sessions/:session_id/token-usage-summary",
