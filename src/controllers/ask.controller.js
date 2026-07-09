@@ -5,6 +5,7 @@ import {
   getAskSessionTokenUsageSummary,
   listAskSessions,
   relayAskStream,
+  renderAskSession,
   resumeAsk,
   saveAskTurn,
   startAsk,
@@ -82,6 +83,19 @@ export async function saveAskTurnHandler(req, res) {
     return res.status(201).json(successResponse(payload));
   } catch (error) {
     return handleAskError(res, error, "ask_turn_save");
+  }
+}
+
+export async function renderAskSessionHandler(req, res) {
+  try {
+    const payload = await renderAskSession({
+      auth: req.auth,
+      sessionId: req.params.session_id,
+      body: req.body,
+    });
+    return res.status(200).json(successResponse(payload));
+  } catch (error) {
+    return handleAskError(res, error, "ask_session_render");
   }
 }
 
