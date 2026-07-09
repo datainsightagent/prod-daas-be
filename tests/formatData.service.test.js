@@ -85,6 +85,35 @@ describe("formatData.service", () => {
     expect(dataset.page.limit).toBe(11);
   });
 
+  it("falls back to real schema columns when requested table columns are invalid", () => {
+    const specRaw = loadJson("component_spec.table.json");
+    const parsed = parseComponentSpec(specRaw);
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+
+    const invalidSpec = {
+      ...parsed.data,
+      data_map: { columns: ["value"] },
+      config: {
+        ...parsed.data.config,
+        columns: [{ key: "value", label: "value", visible: true, align: "left" }],
+      },
+    };
+
+    const rows = [
+      { name: "Alice", order_count: 5 },
+      { name: "Bob", order_count: 4 },
+    ];
+    const schema = [
+      { name: "name", type: "string" },
+      { name: "order_count", type: "number" },
+    ];
+
+    const dataset = formatData(invalidSpec, rows, schema, { rowCount: rows.length });
+    expect(dataset.columns.map((c) => c.key)).toEqual(["name", "order_count"]);
+    expect(dataset.rows[0]).toEqual({ name: "Alice", order_count: 5 });
+  });
+
   it("throws for unsupported component type", () => {
     const spec = {
       type: "line",
