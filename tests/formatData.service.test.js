@@ -139,15 +139,229 @@ describe("formatData.service", () => {
     expect(dataset.rows[0]).toEqual({ name: "Alice", order_count: 5 });
   });
 
-  it("throws for unsupported component type", () => {
+  it("formats bar dataset from x/y fields", () => {
+    const specRaw = loadJson("component_spec.bar.json");
+    const expected = loadJson("dataset.bar.json");
+    const parsed = parseComponentSpec(specRaw);
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+
+    const rows = [
+      { source: "Word of Mouth", count: 18300 },
+      { source: "Facebook", count: 7100 },
+      { source: "Google", count: 5200 },
+    ];
+    const schema = [
+      { name: "source", type: "string" },
+      { name: "count", type: "number" },
+    ];
+
+    const dataset = formatData(parsed.data, rows, schema, { rowCount: rows.length });
+
+    expect(dataset).toEqual(expected);
+    const validated = parseDataset("bar", dataset);
+    expect(validated.success).toBe(true);
+  });
+
+  it("formats line dataset from x/y fields", () => {
+    const specRaw = loadJson("component_spec.line.json");
+    const expected = loadJson("dataset.line.json");
+    const parsed = parseComponentSpec(specRaw);
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+
+    const rows = [
+      { month: "2026-01", count: 1200 },
+      { month: "2026-02", count: 1850 },
+      { month: "2026-03", count: 2100 },
+    ];
+    const schema = [
+      { name: "month", type: "string" },
+      { name: "count", type: "number" },
+    ];
+
+    const dataset = formatData(parsed.data, rows, schema, { rowCount: rows.length });
+
+    expect(dataset).toEqual(expected);
+    const validated = parseDataset("line", dataset);
+    expect(validated.success).toBe(true);
+  });
+
+  it("formats row dataset from y/x fields", () => {
+    const specRaw = loadJson("component_spec.row.json");
+    const expected = loadJson("dataset.row.json");
+    const parsed = parseComponentSpec(specRaw);
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+
+    const rows = [
+      { product_name: "Bucket", total: 1200 },
+      { product_name: "Pizza", total: 45000 },
+      { product_name: "Chef Special", total: 89000 },
+    ];
+    const schema = [
+      { name: "product_name", type: "string" },
+      { name: "total", type: "number" },
+    ];
+
+    const dataset = formatData(parsed.data, rows, schema, { rowCount: rows.length });
+
+    expect(dataset).toEqual(expected);
+    const validated = parseDataset("row", dataset);
+    expect(validated.success).toBe(true);
+  });
+
+  it("formats row chart for top products AI example", () => {
+    const spec = {
+      type: "row",
+      title: "Top 5 Products",
+      data_map: { y_field: "product_name", x_field: "quantity_sold" },
+      config: {
+        display: {
+          series: [{ key: "quantity_sold", label: "Quantity Sold", axis: "auto" }],
+        },
+      },
+    };
+
+    const rows = [
+      { product_name: "Widget A", quantity_sold: 120 },
+      { product_name: "Widget B", quantity_sold: 95 },
+      { product_name: "Widget C", quantity_sold: 80 },
+    ];
+    const schema = [
+      { name: "product_name", type: "string" },
+      { name: "quantity_sold", type: "number" },
+    ];
+
+    const dataset = formatData(spec, rows, schema, { rowCount: rows.length });
+
+    expect(dataset).toEqual({
+      categories: ["Widget A", "Widget B", "Widget C"],
+      series: [{ name: "Quantity Sold", data: [120, 95, 80] }],
+    });
+  });
+
+  it("infers measure and series fields when line data_map is wrong", () => {
     const spec = {
       type: "line",
-      data_map: { x_field: "x", y_field: "y", series_field: null },
+      title: "Monthly payment trend",
+      data_map: {
+        x_field: "month",
+        y_field: "payment_method_id",
+        series_field: null,
+      },
+      config: {
+        display: {
+          series: [{ key: "total_payment", label: "Total Payment", axis: "auto" }],
+        },
+      },
+    };
+
+    const rows = [
+      { payment_method_id: 1, month: "2026-01", total_payment: 1000 },
+      { payment_method_id: 2, month: "2026-01", total_payment: 500 },
+      { payment_method_id: 1, month: "2026-02", total_payment: 1200 },
+      { payment_method_id: 2, month: "2026-02", total_payment: 600 },
+    ];
+    const schema = [
+      { name: "payment_method_id", type: "number" },
+      { name: "month", type: "string" },
+      { name: "total_payment", type: "number" },
+    ];
+
+    const dataset = formatData(spec, rows, schema, { rowCount: rows.length });
+
+    expect(dataset.categories).toEqual(["2026-01", "2026-02"]);
+    expect(dataset.series).toHaveLength(2);
+    expect(dataset.series).toEqual(
+      expect.arrayContaining([
+        { name: "1", data: [1000, 1200] },
+        { name: "2", data: [500, 600] },
+      ]),
+    );
+    const validated = parseDataset("line", dataset);
+    expect(validated.success).toBe(true);
+  });
+
+  it("formats multi-series line dataset when data_map is correct", () => {
+    const spec = {
+      type: "line",
+      data_map: {
+        x_field: "month",
+        y_field: "total_payment",
+        series_field: "payment_method_id",
+      },
+      config: {
+        display: {
+          series: [
+            { key: "1", label: "Card" },
+            { key: "2", label: "Cash" },
+          ],
+        },
+      },
+    };
+
+    const rows = [
+      { payment_method_id: 1, month: "2026-01", total_payment: 1000 },
+      { payment_method_id: 2, month: "2026-01", total_payment: 500 },
+      { payment_method_id: 1, month: "2026-02", total_payment: 1200 },
+      { payment_method_id: 2, month: "2026-02", total_payment: 600 },
+    ];
+    const schema = [
+      { name: "payment_method_id", type: "number" },
+      { name: "month", type: "string" },
+      { name: "total_payment", type: "number" },
+    ];
+
+    const dataset = formatData(spec, rows, schema, { rowCount: rows.length });
+
+    expect(dataset.categories).toEqual(["2026-01", "2026-02"]);
+    expect(dataset.series).toEqual(
+      expect.arrayContaining([
+        { name: "Card", data: [1000, 1200] },
+        { name: "Cash", data: [500, 600] },
+      ]),
+    );
+  });
+
+  it("sums duplicate categories for single-series charts", () => {
+    const spec = {
+      type: "bar",
+      data_map: { x_field: "source", y_field: "count", series_field: null },
+      config: {
+        display: {
+          series: [{ key: "count", label: "Count" }],
+        },
+      },
+    };
+
+    const rows = [
+      { source: "Google", count: 10 },
+      { source: "Google", count: 5 },
+      { source: "Facebook", count: 7 },
+    ];
+    const schema = [
+      { name: "source", type: "string" },
+      { name: "count", type: "number" },
+    ];
+
+    const dataset = formatData(spec, rows, schema, { rowCount: rows.length });
+
+    expect(dataset).toEqual({
+      categories: ["Google", "Facebook"],
+      series: [{ name: "Count", data: [15, 7] }],
+    });
+  });
+
+  it("throws for unsupported component type", () => {
+    const spec = {
+      type: "pie",
+      data_map: { label_field: "label", value_field: "value" },
       config: {},
     };
 
     expect(() => formatData(spec, [], [], {})).toThrow(
-      "Unsupported component type: line",
+      "Unsupported component type: pie",
     );
   });
 });
