@@ -353,6 +353,64 @@ describe("formatData.service", () => {
     });
   });
 
+  it("formats row chart when category ids are bigint", () => {
+    const spec = {
+      type: "row",
+      data_map: { y_field: "product_id", x_field: "total_quantity_sold" },
+      config: {
+        display: {
+          series: [{ key: "total_quantity_sold", label: "Quantity Sold", axis: "auto" }],
+        },
+      },
+    };
+
+    const rows = [
+      { product_id: 101n, total_quantity_sold: 500 },
+      { product_id: 102n, total_quantity_sold: 400 },
+    ];
+    const schema = [
+      { name: "product_id", type: "bigint" },
+      { name: "total_quantity_sold", type: "number" },
+    ];
+
+    const dataset = formatData(spec, rows, schema, { rowCount: rows.length });
+
+    expect(dataset).toEqual({
+      categories: [101, 102],
+      series: [{ name: "Quantity Sold", data: [500, 400] }],
+    });
+    const validated = parseDataset("row", dataset);
+    expect(validated.success).toBe(true);
+  });
+
+  it("falls back to available id column when row y_field name mismatches sql alias", () => {
+    const spec = {
+      type: "row",
+      data_map: { y_field: "product_name", x_field: "total_quantity_sold" },
+      config: {
+        display: {
+          series: [{ key: "total_quantity_sold", label: "Quantity Sold", axis: "auto" }],
+        },
+      },
+    };
+
+    const rows = [
+      { product_id: 101, total_quantity_sold: 500 },
+      { product_id: 102, total_quantity_sold: 400 },
+    ];
+    const schema = [
+      { name: "product_id", type: "number" },
+      { name: "total_quantity_sold", type: "number" },
+    ];
+
+    const dataset = formatData(spec, rows, schema, { rowCount: rows.length });
+
+    expect(dataset).toEqual({
+      categories: [101, 102],
+      series: [{ name: "Quantity Sold", data: [500, 400] }],
+    });
+  });
+
   it("throws for unsupported component type", () => {
     const spec = {
       type: "pie",
