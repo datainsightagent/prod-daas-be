@@ -43,6 +43,16 @@ function toNumberOrNull(value) {
   return null;
 }
 
+function normalizeCategoryValue(value) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "bigint") {
+    const asNumber = Number(value);
+    return Number.isSafeInteger(asNumber) ? asNumber : value.toString();
+  }
+  if (typeof value === "number") return Number.isFinite(value) ? value : String(value);
+  return String(value);
+}
+
 function formatValueDataset(spec, rows) {
   const firstRow = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
   const field = spec?.data_map?.value_field;
@@ -167,7 +177,7 @@ function collectUniqueValues(rows, field) {
   for (const row of rows) {
     if (!row || typeof row !== "object" || Array.isArray(row)) continue;
     if (!(field in row)) continue;
-    const value = row[field];
+    const value = normalizeCategoryValue(row[field]);
     const token = String(value);
     if (seen.has(token)) continue;
     seen.add(token);
@@ -201,11 +211,17 @@ function resolveXyFields(spec, rows, schema) {
 
     if (!rowKeys.includes(categoryField)) {
       const nonNumeric = findNonNumericColumns(rowKeys, rows, schemaByName);
-      categoryField = nonNumeric[0] ?? categoryField;
+      categoryField =
+        nonNumeric[0] ??
+        rowKeys.find((key) => key !== measureField) ??
+        categoryField;
     }
     if (!rowKeys.includes(measureField) || !columnLooksNumeric(measureField, rows, schemaByName)) {
       const numeric = findNumericColumns(rowKeys, rows, schemaByName, [categoryField]);
       measureField = pickBestMeasureColumn(numeric) ?? measureField;
+    }
+    if (!rowKeys.includes(categoryField) && rowKeys.length >= 2) {
+      categoryField = rowKeys.find((key) => key !== measureField) ?? categoryField;
     }
 
     return {
