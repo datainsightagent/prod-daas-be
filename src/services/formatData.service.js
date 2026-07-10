@@ -282,11 +282,67 @@ function resolveXyFields(spec, rows, schema) {
     seriesField = null;
   }
 
-  return {
+  return normalizeXyFieldRoles({
     categoryField: xField,
     measureField: yField,
     seriesField,
-  };
+    rowKeys,
+    rows,
+    schemaByName,
+  });
+}
+
+function normalizeXyFieldRoles({
+  categoryField,
+  measureField,
+  seriesField,
+  rowKeys,
+  rows,
+  schemaByName,
+}) {
+  if (
+    seriesField &&
+    measureField &&
+    columnLooksLikeMeasure(seriesField) &&
+    !columnLooksLikeMeasure(measureField)
+  ) {
+    return {
+      categoryField,
+      measureField: seriesField,
+      seriesField: measureField,
+    };
+  }
+
+  if (!seriesField) {
+    const numericColumns = findNumericColumns(rowKeys, rows, schemaByName, [categoryField]);
+    const measureCol = pickBestMeasureColumn(
+      numericColumns.filter((key) => columnLooksLikeMeasure(key)),
+    );
+    const dimensionCols = numericColumns.filter(
+      (key) =>
+        key !== measureCol &&
+        (columnLooksLikeDimension(key) || !columnLooksLikeMeasure(key)),
+    );
+
+    if (measureCol && dimensionCols.length === 1) {
+      return {
+        categoryField,
+        measureField: measureCol,
+        seriesField: dimensionCols[0],
+      };
+    }
+  }
+
+  return { categoryField, measureField, seriesField };
+}
+
+function formatSeriesName(configuredSeries, seriesKey) {
+  const label = resolveSeriesLabel(configuredSeries, seriesKey);
+  const token = String(seriesKey);
+  if (label === token && /^\d+$/.test(token)) {
+    return `Method ${token}`;
+  }
+  return label;
 }
 
 function measureValueForCategory(rows, categoryField, categoryValue, measureField) {
@@ -313,7 +369,7 @@ function formatXyDataset(spec, rows, schema) {
   if (seriesField) {
     const seriesKeys = collectUniqueValues(safeRows, seriesField);
     const series = seriesKeys.map((seriesKey) => ({
-      name: resolveSeriesLabel(configuredSeries, seriesKey),
+      name: formatSeriesName(configuredSeries, seriesKey),
       data: categories.map((category) => {
         const match = safeRows.find(
           (row) =>
