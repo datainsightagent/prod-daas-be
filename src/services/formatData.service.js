@@ -82,6 +82,252 @@ function orderColumnsByConfig(columnKeys, configuredColumns) {
   return ordered.length > 0 ? ordered : columnKeys;
 }
 
+function buildSchemaByName(schema) {
+  return new Map(
+    (Array.isArray(schema) ? schema : []).map((entry) => [entry?.name, entry?.type]),
+  );
+}
+
+function getRowKeys(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+  const first = rows[0];
+  if (!first || typeof first !== "object" || Array.isArray(first)) return [];
+  return Object.keys(first);
+}
+
+function columnLooksNumeric(key, rows, schemaByName) {
+  const schemaType = schemaByName.get(key);
+  if (schemaType) {
+    const normalized = String(schemaType).toLowerCase();
+    if (
+      normalized.includes("int") ||
+      normalized.includes("decimal") ||
+      normalized.includes("numeric") ||
+      normalized.includes("float") ||
+      normalized.includes("double") ||
+      normalized === "number"
+    ) {
+      return true;
+    }
+    if (normalized.includes("char") || normalized.includes("text") || normalized === "string") {
+      return false;
+    }
+  }
+
+  for (const row of rows) {
+    if (!row || typeof row !== "object" || Array.isArray(row)) continue;
+    if (!(key in row)) continue;
+    const value = row[key];
+    if (value === null || value === undefined) continue;
+    if (typeof value === "number" || typeof value === "bigint") return true;
+    if (typeof value === "string" && Number.isFinite(Number(value.replace(/,/g, "")))) {
+      return true;
+    }
+    return false;
+  }
+
+  return false;
+}
+
+function findNumericColumns(rowKeys, rows, schemaByName, exclude = []) {
+  const excluded = new Set(exclude);
+  return rowKeys.filter(
+    (key) => !excluded.has(key) && columnLooksNumeric(key, rows, schemaByName),
+  );
+}
+
+function findNonNumericColumns(rowKeys, rows, schemaByName, exclude = []) {
+  const excluded = new Set(exclude);
+  return rowKeys.filter(
+    (key) => !excluded.has(key) && !columnLooksNumeric(key, rows, schemaByName),
+  );
+}
+
+function pickBestMeasureColumn(numericColumns) {
+  if (numericColumns.length === 0) return null;
+  const preferred = numericColumns.find((key) => columnLooksLikeMeasure(key));
+  return preferred ?? numericColumns[numericColumns.length - 1];
+}
+
+function columnLooksLikeMeasure(key) {
+  if (/_id$|^id$/i.test(key)) return false;
+  return /total|count|sum|amount|qty|quantity|revenue|value|payment/i.test(key);
+}
+
+function columnLooksLikeDimension(key) {
+  return (
+    /_id$|^id$/i.test(key) ||
+    /method|category|type|name|month|year|day|week|source|status|region|segment/i.test(key)
+  );
+}
+
+function collectUniqueValues(rows, field) {
+  const values = [];
+  const seen = new Set();
+  for (const row of rows) {
+    if (!row || typeof row !== "object" || Array.isArray(row)) continue;
+    if (!(field in row)) continue;
+    const value = row[field];
+    const token = String(value);
+    if (seen.has(token)) continue;
+    seen.add(token);
+    values.push(value);
+  }
+  return values;
+}
+
+function resolveSeriesLabel(configuredSeries, fallbackKey) {
+  const configured = Array.isArray(configuredSeries) ? configuredSeries : [];
+  const match =
+    configured.find((entry) => entry?.key === fallbackKey) ??
+    configured.find(
+      (entry) =>
+        typeof entry?.key === "string" &&
+        entry.key.toLowerCase() === String(fallbackKey).toLowerCase(),
+    );
+  if (match?.label) return match.label;
+  if (match?.key) return match.key;
+  return String(fallbackKey);
+}
+
+function resolveXyFields(spec, rows, schema) {
+  const schemaByName = buildSchemaByName(schema);
+  const rowKeys = getRowKeys(rows);
+  const dataMap = spec?.data_map ?? {};
+
+  if (spec.type === "row") {
+    let categoryField = dataMap.y_field;
+    let measureField = dataMap.x_field;
+
+    if (!rowKeys.includes(categoryField)) {
+      const nonNumeric = findNonNumericColumns(rowKeys, rows, schemaByName);
+      categoryField = nonNumeric[0] ?? categoryField;
+    }
+    if (!rowKeys.includes(measureField) || !columnLooksNumeric(measureField, rows, schemaByName)) {
+      const numeric = findNumericColumns(rowKeys, rows, schemaByName, [categoryField]);
+      measureField = pickBestMeasureColumn(numeric) ?? measureField;
+    }
+
+    return {
+      categoryField,
+      measureField,
+      seriesField: null,
+    };
+  }
+
+  let xField = dataMap.x_field;
+  let yField = dataMap.y_field;
+  let seriesField = dataMap.series_field ?? null;
+
+  if (!rowKeys.includes(xField)) {
+    const nonNumeric = findNonNumericColumns(rowKeys, rows, schemaByName, [yField, seriesField]);
+    xField = nonNumeric[0] ?? xField;
+  }
+
+  const yIsNumeric = rowKeys.includes(yField) && columnLooksNumeric(yField, rows, schemaByName);
+  const numericColumns = findNumericColumns(rowKeys, rows, schemaByName, [xField]);
+  const measureColumns = numericColumns.filter((key) => columnLooksLikeMeasure(key));
+  const bestMeasure = pickBestMeasureColumn(
+    measureColumns.length > 0 ? measureColumns : numericColumns,
+  );
+
+  const yLooksLikeDimension =
+    rowKeys.includes(yField) &&
+    yField !== xField &&
+    !columnLooksLikeMeasure(yField) &&
+    (columnLooksLikeDimension(yField) ||
+      (yIsNumeric && numericColumns.length > 1 && yField !== bestMeasure));
+
+  if (yLooksLikeDimension && bestMeasure && yField !== bestMeasure) {
+    if (!seriesField) {
+      seriesField = yField;
+    }
+    yField = bestMeasure;
+  } else if (!yIsNumeric) {
+    const measureField = bestMeasure;
+
+    if (!seriesField && yField && rowKeys.includes(yField) && yField !== xField) {
+      seriesField = yField;
+    }
+
+    if (measureField) {
+      yField = measureField;
+    }
+  }
+
+  if (!seriesField) {
+    const extraDimensions = findNonNumericColumns(rowKeys, rows, schemaByName, [xField, yField]);
+    if (extraDimensions.length === 1) {
+      seriesField = extraDimensions[0];
+    }
+  }
+
+  if (seriesField === xField || seriesField === yField) {
+    seriesField = null;
+  }
+
+  return {
+    categoryField: xField,
+    measureField: yField,
+    seriesField,
+  };
+}
+
+function measureValueForCategory(rows, categoryField, categoryValue, measureField) {
+  const matches = rows.filter(
+    (row) =>
+      row &&
+      typeof row === "object" &&
+      !Array.isArray(row) &&
+      String(row[categoryField]) === String(categoryValue),
+  );
+
+  if (matches.length === 0) return null;
+  if (matches.length === 1) return toNumberOrNull(matches[0][measureField]);
+
+  return matches.reduce((sum, row) => sum + (toNumberOrNull(row[measureField]) ?? 0), 0);
+}
+
+function formatXyDataset(spec, rows, schema) {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  const { categoryField, measureField, seriesField } = resolveXyFields(spec, safeRows, schema);
+  const configuredSeries = spec?.config?.display?.series ?? [];
+  const categories = collectUniqueValues(safeRows, categoryField);
+
+  if (seriesField) {
+    const seriesKeys = collectUniqueValues(safeRows, seriesField);
+    const series = seriesKeys.map((seriesKey) => ({
+      name: resolveSeriesLabel(configuredSeries, seriesKey),
+      data: categories.map((category) => {
+        const match = safeRows.find(
+          (row) =>
+            row &&
+            typeof row === "object" &&
+            !Array.isArray(row) &&
+            String(row[categoryField]) === String(category) &&
+            String(row[seriesField]) === String(seriesKey),
+        );
+        return match ? toNumberOrNull(match[measureField]) : null;
+      }),
+    }));
+
+    return { categories, series };
+  }
+
+  const seriesLabel = resolveSeriesLabel(
+    configuredSeries,
+    configuredSeries[0]?.key ?? measureField,
+  );
+  const data = categories.map((category) =>
+    measureValueForCategory(safeRows, categoryField, category, measureField),
+  );
+
+  return {
+    categories,
+    series: [{ name: seriesLabel, data }],
+  };
+}
+
 function formatTableDataset(spec, rows, schema, opts = {}) {
   const safeRows = Array.isArray(rows) ? rows : [];
   const selectedColumns = Array.isArray(spec?.data_map?.columns)
@@ -157,6 +403,10 @@ export function formatData(spec, rows, schema, opts = {}) {
       return formatValueDataset(spec, rows);
     case "table":
       return formatTableDataset(spec, rows, schema, opts);
+    case "bar":
+    case "line":
+    case "row":
+      return formatXyDataset(spec, rows, schema);
     default:
       throw new Error(`Unsupported component type: ${spec.type}`);
   }
