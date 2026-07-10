@@ -275,8 +275,8 @@ describe("formatData.service", () => {
     expect(dataset.series).toHaveLength(2);
     expect(dataset.series).toEqual(
       expect.arrayContaining([
-        { name: "1", data: [1000, 1200] },
-        { name: "2", data: [500, 600] },
+        { name: "Method 1", data: [1000, 1200] },
+        { name: "Method 2", data: [500, 600] },
       ]),
     );
     const validated = parseDataset("line", dataset);
@@ -351,6 +351,101 @@ describe("formatData.service", () => {
       categories: ["Google", "Facebook"],
       series: [{ name: "Count", data: [15, 7] }],
     });
+  });
+
+  it("formats monthly payment trend with payment methods as series lines", () => {
+    const spec = {
+      type: "line",
+      data_map: {
+        x_field: "month",
+        y_field: "payment_method_id",
+        series_field: null,
+      },
+      config: {
+        display: {
+          series: [{ key: "payment_method_id", label: "Payment Method Id" }],
+        },
+      },
+    };
+
+    const rows = [
+      { month: "2025-07", payment_method_id: 1, total_payment: 1103.3 },
+      { month: "2025-07", payment_method_id: 9, total_payment: 169235.83 },
+      { month: "2025-08", payment_method_id: 1, total_payment: 32871.85 },
+      { month: "2025-09", payment_method_id: 2, total_payment: 2668.19 },
+      { month: "2025-11", payment_method_id: 1, total_payment: 42038.71 },
+      { month: "2025-11", payment_method_id: 9, total_payment: 1074849.93 },
+      { month: "2025-12", payment_method_id: 1, total_payment: 9745.38 },
+    ];
+    const schema = [
+      { name: "month", type: "string" },
+      { name: "payment_method_id", type: "number" },
+      { name: "total_payment", type: "decimal" },
+    ];
+
+    const dataset = formatData(spec, rows, schema, { rowCount: rows.length });
+
+    expect(dataset.categories).toEqual([
+      "2025-07",
+      "2025-08",
+      "2025-09",
+      "2025-11",
+      "2025-12",
+    ]);
+    expect(dataset.series.length).toBeLessThanOrEqual(4);
+    expect(dataset.series[0]).toEqual(
+      expect.objectContaining({
+        name: "Method 1",
+        data: expect.arrayContaining([1103.3, 32871.85, 42038.71, 9745.38]),
+      }),
+    );
+    expect(dataset.series).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "Method 9",
+          data: expect.arrayContaining([169235.83, 1074849.93]),
+        }),
+      ]),
+    );
+    expect(
+      dataset.series.every((series) =>
+        series.data.every((value) => value === null || typeof value === "number"),
+      ),
+    ).toBe(true);
+  });
+
+  it("corrects inverted measure and series fields for line charts", () => {
+    const spec = {
+      type: "line",
+      data_map: {
+        x_field: "month",
+        y_field: "payment_method_id",
+        series_field: "total_payment",
+      },
+      config: {
+        display: {
+          series: [{ key: "payment_method_id", label: "Payment Method Id" }],
+        },
+      },
+    };
+
+    const rows = [
+      { month: "2025-07", payment_method_id: 1, total_payment: 1103.3 },
+      { month: "2025-07", payment_method_id: 9, total_payment: 169235.83 },
+      { month: "2025-08", payment_method_id: 1, total_payment: 32871.85 },
+    ];
+    const schema = [
+      { name: "month", type: "string" },
+      { name: "payment_method_id", type: "number" },
+      { name: "total_payment", type: "decimal" },
+    ];
+
+    const dataset = formatData(spec, rows, schema, { rowCount: rows.length });
+
+    expect(dataset.series).toEqual([
+      { name: "Method 1", data: [1103.3, 32871.85] },
+      { name: "Method 9", data: [169235.83, null] },
+    ]);
   });
 
   it("formats row chart when category ids are bigint", () => {
