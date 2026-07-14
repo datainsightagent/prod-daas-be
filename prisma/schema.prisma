@@ -107,6 +107,21 @@ enum QueryRunStatus {
   cancelled
 }
 
+enum DashboardStatus {
+  active
+  archived
+}
+
+enum WidgetStatus {
+  active
+  archived
+}
+
+enum QueryDefinitionStatus {
+  active
+  archived
+}
+
 enum SchemaChangeType {
   table_added
   table_removed
@@ -158,6 +173,9 @@ model Tenant {
   queryResults       QueryResult[]
   entityDescriptions EntityDescription[]
   schemaChangeEvents SchemaChangeEvent[]
+  dashboards         Dashboard[]
+  queryDefinitions   QueryDefinition[]
+  widgets            Widget[]
   createdAt          DateTime                 @default(now()) @map("created_at")
   updatedAt          DateTime                 @updatedAt @map("updated_at")
 
@@ -321,6 +339,7 @@ model DataSource {
   onboardingSessions OnboardingSession[]
   askSessions        AskSession[]
   queryRuns          QueryRun[]
+  queryDefinitions   QueryDefinition[]
   createdAt      DateTime                 @default(now()) @map("created_at")
   updatedAt      DateTime                 @updatedAt @map("updated_at")
 
@@ -642,4 +661,63 @@ model QueryResult {
 
   @@index([tenantId, createdAt], map: "query_results_tenant_created_idx")
   @@map("query_results")
+}
+
+model Dashboard {
+  dashboardId   String          @id @default(cuid()) @map("dashboard_id")
+  tenantId      String          @map("tenant_id")
+  name          String          @db.VarChar(120)
+  description   String?         @db.VarChar(2000)
+  layoutVersion Int             @default(1) @map("layout_version")
+  status        DashboardStatus @default(active)
+  createdBy     String          @map("created_by")
+  tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  widgets       Widget[]
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+
+  @@index([tenantId, status, updatedAt(sort: Desc)], map: "dashboards_tenant_status_updated_idx")
+  @@index([tenantId, createdBy], map: "dashboards_tenant_created_by_idx")
+  @@map("dashboards")
+}
+
+model QueryDefinition {
+  queryId      String                @id @default(cuid()) @map("query_id")
+  tenantId     String                @map("tenant_id")
+  dataSourceId String                @map("data_source_id")
+  sql          String                @db.Text
+  name         String                @db.VarChar(120)
+  status       QueryDefinitionStatus @default(active)
+  createdBy    String                @map("created_by")
+  tenant       Tenant                @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  dataSource   DataSource            @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+  widgets      Widget[]
+  createdAt    DateTime              @default(now()) @map("created_at")
+  updatedAt    DateTime              @updatedAt @map("updated_at")
+
+  @@index([tenantId, status, updatedAt(sort: Desc)], map: "query_definitions_tenant_status_updated_idx")
+  @@index([tenantId, dataSourceId], map: "query_definitions_tenant_data_source_idx")
+  @@map("query_definitions")
+}
+
+model Widget {
+  widgetId      String       @id @default(cuid()) @map("widget_id")
+  dashboardId   String       @map("dashboard_id")
+  tenantId      String       @map("tenant_id")
+  title         String       @db.VarChar(120)
+  type          String       @db.VarChar(32)
+  queryId       String       @map("query_id")
+  componentSpec Json         @map("component_spec")
+  layout        Json
+  status        WidgetStatus @default(active)
+  version       Int          @default(1)
+  tenant        Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  dashboard     Dashboard    @relation(fields: [dashboardId], references: [dashboardId], onDelete: Cascade)
+  query         QueryDefinition @relation(fields: [queryId], references: [queryId], onDelete: Restrict)
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  @@index([tenantId, dashboardId, status], map: "widgets_tenant_dashboard_status_idx")
+  @@index([tenantId, queryId], map: "widgets_tenant_query_idx")
+  @@map("widgets")
 }
