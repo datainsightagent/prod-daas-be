@@ -14,6 +14,8 @@ import glossaryRoutes from "./glossary.routes.js";
 import kbRoutes from "./kb.routes.js";
 import onboardingRoutes from "./onboarding.routes.js";
 import askRoutes from "./ask.routes.js";
+import dashboardRoutes from "./dashboard.routes.js";
+import widgetRoutes from "./widget.routes.js";
 import queriesRoutes from "./queries.routes.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { requireUserOrServiceAuth } from "../middleware/requireUserOrServiceAuth.js";
@@ -75,5 +77,7 @@ router.use("/glossary", glossaryRoutes);
 router.use("/kb", kbRoutes);
 router.use("/onboarding", onboardingRoutes);
 router.use("/ask", askRoutes);
+router.use("/dashboards", dashboardRoutes);
+router.use("/widgets", widgetRoutes);
 
 export default router;
