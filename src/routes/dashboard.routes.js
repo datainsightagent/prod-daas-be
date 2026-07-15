@@ -6,12 +6,14 @@ import {
   getDashboardHandler,
   listDashboardsHandler,
   patchDashboardHandler,
+  patchDashboardLayoutHandler,
 } from "../controllers/dashboard.controller.js";
 
 const router = express.Router();
 
 router.post("/", createDashboardHandler);
 router.get("/", listDashboardsHandler);
+router.patch("/:dashboard_id/layout", patchDashboardLayoutHandler);
 router.get("/:dashboard_id", getDashboardHandler);
 router.patch("/:dashboard_id", patchDashboardHandler);
 router.delete("/:dashboard_id", deleteDashboardHandler);
