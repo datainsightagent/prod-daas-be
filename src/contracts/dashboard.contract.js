@@ -2,12 +2,22 @@ import { z } from "zod";
 import { componentSpecSchema } from "./componentSpec.contract.js";
 import { datasetSchemaByType } from "./componentDataset.contract.js";
 
-const layoutSchema = z.object({
-  x: z.number().int().min(0).default(0),
-  y: z.number().int().min(0).default(0),
-  w: z.number().int().min(1).max(12).default(6),
-  h: z.number().int().min(1).default(4),
-});
+const layoutSchema = z
+  .object({
+    x: z.number().int().min(0).default(0),
+    y: z.number().int().min(0).default(0),
+    w: z.number().int().min(1).max(12).default(6),
+    h: z.number().int().min(1).default(4),
+  })
+  .superRefine((layout, ctx) => {
+    if (layout.x + layout.w > 12) {
+      ctx.addIssue({
+        code: "custom",
+        message: "layout.x + layout.w must be <= 12",
+        path: ["w"],
+      });
+    }
+  });
 
 export const createDashboardBodySchema = z.object({
   name: z.string().trim().min(1).max(120),
@@ -25,6 +35,21 @@ export const patchDashboardBodySchema = z.object({
 
 export function parsePatchDashboardBody(raw) {
   return patchDashboardBodySchema.safeParse(raw);
+}
+
+export const patchDashboardLayoutBodySchema = z.object({
+  widgets: z
+    .array(
+      z.object({
+        widget_id: z.string().trim().min(1),
+        layout: layoutSchema,
+      }),
+    )
+    .default([]),
+});
+
+export function parsePatchDashboardLayoutBody(raw) {
+  return patchDashboardLayoutBodySchema.safeParse(raw);
 }
 
 export const dashboardIdParamSchema = z.object({
