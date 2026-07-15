@@ -4,6 +4,7 @@ import {
   parseCreateDashboardBody,
   parseDashboardIdParam,
   parsePatchDashboardBody,
+  parsePatchDashboardLayoutBody,
 } from "../contracts/dashboard.contract.js";
 
 export class DashboardServiceError extends Error {
@@ -200,4 +201,130 @@ export async function deleteDashboard({ auth, dashboardId }) {
   ]);
 
   return { dashboard_id: dashboard.dashboardId, status: "archived" };
+}
+
+function layoutsOverlap(a, b) {
+  const ax1 = a.x;
+  const ay1 = a.y;
+  const ax2 = a.x + a.w;
+  const ay2 = a.y + a.h;
+  const bx1 = b.x;
+  const by1 = b.y;
+  const bx2 = b.x + b.w;
+  const by2 = b.y + b.h;
+  return ax1 < bx2 && ax2 > bx1 && ay1 < by2 && ay2 > by1;
+}
+
+export async function patchDashboardLayout({ auth, dashboardId, body }) {
+  assertRequiredRole(auth, ["tenant_admin", "analyst"]);
+
+  const paramParsed = parseDashboardIdParam({ dashboard_id: dashboardId });
+  if (!paramParsed.success) {
+    throw new DashboardServiceError("Invalid dashboard id", 400, "validation_error");
+  }
+
+  const parsed = parsePatchDashboardLayoutBody(body);
+  if (!parsed.success) {
+    throw new DashboardServiceError("Invalid layout payload", 400, "validation_error");
+  }
+
+  const domainPrisma = await resolveDomainPrismaForAuth(auth);
+  const dashboard = await getOwnedDashboardOrFail({
+    domainPrisma,
+    dashboardId: paramParsed.data.dashboard_id,
+    tenantId: auth.tenantId,
+    includeWidgets: true,
+  });
+
+  const updates = parsed.data.widgets;
+  if (updates.length === 0) {
+    return {
+      dashboard_id: dashboard.dashboardId,
+      layout_version: dashboard.layoutVersion,
+      widgets: (dashboard.widgets ?? []).map((widget) => ({
+        widget_id: widget.widgetId,
+        layout: widget.layout,
+      })),
+    };
+  }
+
+  const activeById = new Map(
+    (dashboard.widgets ?? []).map((widget) => [widget.widgetId, widget]),
+  );
+
+  const seen = new Set();
+  for (const entry of updates) {
+    if (seen.has(entry.widget_id)) {
+      throw new DashboardServiceError(
+        "Duplicate widget_id in layout payload",
+        400,
+        "validation_error",
+      );
+    }
+    seen.add(entry.widget_id);
+
+    if (!activeById.has(entry.widget_id)) {
+      throw new DashboardServiceError(
+        "One or more widgets do not belong to this dashboard",
+        400,
+        "cross_dashboard_widgets",
+      );
+    }
+  }
+
+  const nextLayouts = new Map(
+    (dashboard.widgets ?? []).map((widget) => [widget.widgetId, widget.layout]),
+  );
+  for (const entry of updates) {
+    nextLayouts.set(entry.widget_id, entry.layout);
+  }
+
+  const layoutEntries = [...nextLayouts.entries()];
+  for (let i = 0; i < layoutEntries.length; i += 1) {
+    for (let j = i + 1; j < layoutEntries.length; j += 1) {
+      const [, layoutA] = layoutEntries[i];
+      const [, layoutB] = layoutEntries[j];
+      if (layoutsOverlap(layoutA, layoutB)) {
+        throw new DashboardServiceError(
+          "Widget layouts must not overlap",
+          400,
+          "overlapping_layout",
+        );
+      }
+    }
+  }
+
+  const updated = await domainPrisma.$transaction(async (tx) => {
+    for (const entry of updates) {
+      await tx.widget.update({
+        where: { widgetId: entry.widget_id },
+        data: {
+          layout: entry.layout,
+          version: { increment: 1 },
+        },
+      });
+    }
+
+    return tx.dashboard.update({
+      where: { dashboardId: dashboard.dashboardId },
+      data: {
+        layoutVersion: { increment: 1 },
+      },
+      include: {
+        widgets: {
+          where: { status: "active" },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+    });
+  });
+
+  return {
+    dashboard_id: updated.dashboardId,
+    layout_version: updated.layoutVersion,
+    widgets: (updated.widgets ?? []).map((widget) => ({
+      widget_id: widget.widgetId,
+      layout: widget.layout,
+    })),
+  };
 }
