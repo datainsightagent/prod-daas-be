@@ -6,6 +6,7 @@ import {
   getDashboard,
   listDashboards,
   patchDashboard,
+  patchDashboardLayout,
 } from "../services/dashboard.service.js";
 import {
   WidgetServiceError,
@@ -89,6 +90,19 @@ export async function deleteDashboardHandler(req, res) {
     return res.status(200).json(successResponse(payload));
   } catch (error) {
     return handleDashboardError(res, error, "dashboard_delete");
+  }
+}
+
+export async function patchDashboardLayoutHandler(req, res) {
+  try {
+    const payload = await patchDashboardLayout({
+      auth: req.auth,
+      dashboardId: req.params.dashboard_id,
+      body: req.body,
+    });
+    return res.status(200).json(successResponse(payload));
+  } catch (error) {
+    return handleDashboardError(res, error, "dashboard_layout_patch");
   }
 }
 
