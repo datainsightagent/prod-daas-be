@@ -14,6 +14,7 @@ import {
   deleteWidget,
   getWidget,
   getWidgetData,
+  patchWidget,
 } from "../services/widget.service.js";
 
 function handleDashboardError(res, error, operationName) {
@@ -128,6 +129,19 @@ export async function getWidgetHandler(req, res) {
     return res.status(200).json(successResponse(payload));
   } catch (error) {
     return handleDashboardError(res, error, "widget_get");
+  }
+}
+
+export async function patchWidgetHandler(req, res) {
+  try {
+    const payload = await patchWidget({
+      auth: req.auth,
+      widgetId: req.params.widget_id,
+      body: req.body,
+    });
+    return res.status(200).json(successResponse(payload));
+  } catch (error) {
+    return handleDashboardError(res, error, "widget_patch");
   }
 }
 
