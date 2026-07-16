@@ -40,6 +40,9 @@ function mapWidgetSummary(row) {
     layout: row.layout,
     status: row.status,
     version: row.version,
+    source_ask_session_id: row.sourceAskSessionId ?? null,
+    source_message_id: row.sourceMessageId ?? null,
+    data_source_id: row.query?.dataSourceId ?? null,
     created_at: row.createdAt,
     updated_at: row.updatedAt,
   };
@@ -62,6 +65,11 @@ export async function getOwnedDashboardOrFail({
           widgets: {
             where: { status: "active" },
             orderBy: { createdAt: "asc" },
+            include: {
+              query: {
+                select: { dataSourceId: true },
+              },
+            },
           },
         }
       : undefined,

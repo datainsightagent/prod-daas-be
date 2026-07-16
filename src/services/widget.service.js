@@ -3,6 +3,7 @@ import { resolveDomainPrismaForAuth } from "../lib/tenantPrismaRouting.js";
 import {
   parseCreateWidgetBody,
   parseDashboardIdParam,
+  parsePatchWidgetBody,
   parseWidgetIdParam,
   widgetDataResultSchemaForType,
 } from "../contracts/dashboard.contract.js";
@@ -47,6 +48,8 @@ function mapWidget(row) {
     layout: row.layout,
     status: row.status,
     version: row.version,
+    source_ask_session_id: row.sourceAskSessionId ?? null,
+    source_message_id: row.sourceMessageId ?? null,
     created_at: row.createdAt,
     updated_at: row.updatedAt,
   };
@@ -112,6 +115,76 @@ async function getOwnedWidgetOrFail({ domainPrisma, widgetId, tenantId }) {
   return widget;
 }
 
+/**
+ * Optional chat provenance. Validates session/message belong to this tenant.
+ * Returns nulls when omitted.
+ */
+async function resolveSourceProvenance({
+  domainPrisma,
+  tenantId,
+  sourceAskSessionId,
+  sourceMessageId,
+}) {
+  const sessionId =
+    typeof sourceAskSessionId === "string" && sourceAskSessionId.trim()
+      ? sourceAskSessionId.trim()
+      : null;
+  const messageId =
+    typeof sourceMessageId === "string" && sourceMessageId.trim()
+      ? sourceMessageId.trim()
+      : null;
+
+  if (!sessionId && !messageId) {
+    return { sourceAskSessionId: null, sourceMessageId: null };
+  }
+
+  if (sessionId) {
+    const session = await domainPrisma.askSession.findFirst({
+      where: { sessionId, tenantId },
+      select: { sessionId: true },
+    });
+    if (!session) {
+      throw new WidgetServiceError(
+        "source_ask_session_id not found for this tenant",
+        400,
+        "invalid_source_session",
+      );
+    }
+  }
+
+  if (messageId) {
+    const message = await domainPrisma.askMessage.findFirst({
+      where: { messageId, tenantId },
+      select: { messageId: true, sessionId: true },
+    });
+    if (!message) {
+      throw new WidgetServiceError(
+        "source_message_id not found for this tenant",
+        400,
+        "invalid_source_message",
+      );
+    }
+    if (sessionId && message.sessionId !== sessionId) {
+      throw new WidgetServiceError(
+        "source_message_id does not belong to source_ask_session_id",
+        400,
+        "source_message_session_mismatch",
+      );
+    }
+    if (!sessionId) {
+      return {
+        sourceAskSessionId: message.sessionId,
+        sourceMessageId: message.messageId,
+      };
+    }
+  }
+
+  return {
+    sourceAskSessionId: sessionId,
+    sourceMessageId: messageId,
+  };
+}
+
 export async function createDashboardWidget({ auth, dashboardId, body }) {
   assertRequiredRole(auth, ["tenant_admin", "analyst"]);
 
@@ -145,6 +218,13 @@ export async function createDashboardWidget({ auth, dashboardId, body }) {
     }
     throw error;
   }
+
+  const provenance = await resolveSourceProvenance({
+    domainPrisma,
+    tenantId: auth.tenantId,
+    sourceAskSessionId: parsed.data.source_ask_session_id,
+    sourceMessageId: parsed.data.source_message_id,
+  });
 
   const componentSpec = parsed.data.component_spec;
   const title =
@@ -183,6 +263,8 @@ export async function createDashboardWidget({ auth, dashboardId, body }) {
         layout,
         status: "active",
         version: 1,
+        sourceAskSessionId: provenance.sourceAskSessionId,
+        sourceMessageId: provenance.sourceMessageId,
       },
     });
 
@@ -195,6 +277,99 @@ export async function createDashboardWidget({ auth, dashboardId, body }) {
   });
 
   return mapWidget(result);
+}
+
+export async function patchWidget({ auth, widgetId, body }) {
+  assertRequiredRole(auth, ["tenant_admin", "analyst"]);
+
+  const paramParsed = parseWidgetIdParam({ widget_id: widgetId });
+  if (!paramParsed.success) {
+    throw new WidgetServiceError("Invalid widget id", 400, "validation_error");
+  }
+
+  const parsed = parsePatchWidgetBody(body);
+  if (!parsed.success) {
+    throw new WidgetServiceError("Invalid widget payload", 400, "validation_error");
+  }
+
+  const domainPrisma = await resolveDomainPrismaForAuth(auth);
+  const widget = await getOwnedWidgetOrFail({
+    domainPrisma,
+    widgetId: paramParsed.data.widget_id,
+    tenantId: auth.tenantId,
+  });
+
+  if (widget.query.status !== "active") {
+    throw new WidgetServiceError(
+      "Widget query is archived; recreate the widget",
+      409,
+      "query_archived",
+    );
+  }
+
+  const componentSpec = parsed.data.component_spec;
+  const title =
+    parsed.data.title?.trim() ||
+    (typeof componentSpec.title === "string" ? componentSpec.title.trim() : widget.title);
+
+  const hasProvenancePatch =
+    parsed.data.source_ask_session_id !== undefined ||
+    parsed.data.source_message_id !== undefined;
+
+  let provenance = {
+    sourceAskSessionId: widget.sourceAskSessionId ?? null,
+    sourceMessageId: widget.sourceMessageId ?? null,
+  };
+
+  if (hasProvenancePatch) {
+    provenance = await resolveSourceProvenance({
+      domainPrisma,
+      tenantId: auth.tenantId,
+      sourceAskSessionId:
+        parsed.data.source_ask_session_id !== undefined
+          ? parsed.data.source_ask_session_id
+          : widget.sourceAskSessionId,
+      sourceMessageId:
+        parsed.data.source_message_id !== undefined
+          ? parsed.data.source_message_id
+          : widget.sourceMessageId,
+    });
+  }
+
+  const updated = await domainPrisma.$transaction(async (tx) => {
+    await tx.queryDefinition.update({
+      where: { queryId: widget.queryId },
+      data: {
+        sql: parsed.data.sql,
+        name: title.slice(0, 120),
+      },
+    });
+
+    const next = await tx.widget.update({
+      where: { widgetId: widget.widgetId },
+      data: {
+        title: title.slice(0, 120),
+        type: componentSpec.type,
+        componentSpec,
+        version: { increment: 1 },
+        sourceAskSessionId: provenance.sourceAskSessionId,
+        sourceMessageId: provenance.sourceMessageId,
+      },
+    });
+
+    await tx.dashboard.update({
+      where: { dashboardId: widget.dashboardId },
+      data: { updatedAt: new Date() },
+    });
+
+    return next;
+  });
+
+  return {
+    ...mapWidget(updated),
+    data_source_id: widget.query.dataSourceId,
+    sql: parsed.data.sql,
+  };
 }
 
 export async function getWidget({ auth, widgetId }) {
