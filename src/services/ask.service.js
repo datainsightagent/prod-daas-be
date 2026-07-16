@@ -431,6 +431,7 @@ export async function getAskSessionTokenUsageSummary({ auth, sessionId }) {
     orderBy: { createdAt: "asc" },
     select: {
       model: true,
+      step: true,
       inputTokens: true,
       outputTokens: true,
       totalTokens: true,
@@ -439,6 +440,7 @@ export async function getAskSessionTokenUsageSummary({ auth, sessionId }) {
   });
 
   const byModelMap = new Map();
+  const byStepMap = new Map();
   for (const row of usageRows) {
     const current = byModelMap.get(row.model) ?? {
       model: row.model,
@@ -453,9 +455,27 @@ export async function getAskSessionTokenUsageSummary({ auth, sessionId }) {
     current.total_tokens += row.totalTokens;
     current.rows += 1;
     byModelMap.set(row.model, current);
+
+    const stepKey = row.step ?? "unknown";
+    const stepCurrent = byStepMap.get(stepKey) ?? {
+      step: stepKey,
+      input_tokens: 0,
+      output_tokens: 0,
+      total_tokens: 0,
+      rows: 0,
+    };
+    stepCurrent.input_tokens += row.inputTokens;
+    stepCurrent.output_tokens += row.outputTokens;
+    stepCurrent.total_tokens += row.totalTokens;
+    stepCurrent.rows += 1;
+    byStepMap.set(stepKey, stepCurrent);
   }
 
   const byModel = Array.from(byModelMap.values()).sort(
+    (a, b) => b.total_tokens - a.total_tokens,
+  );
+
+  const byStep = Array.from(byStepMap.values()).sort(
     (a, b) => b.total_tokens - a.total_tokens,
   );
 
@@ -479,6 +499,7 @@ export async function getAskSessionTokenUsageSummary({ auth, sessionId }) {
     usage_rows: usageRows.length,
     totals,
     by_model: byModel,
+    by_step: byStep,
     latest_recorded_at:
       usageRows.length > 0 ? usageRows[usageRows.length - 1].createdAt : null,
   };
@@ -647,6 +668,7 @@ export async function saveAskTurn({ auth, sessionId, body }) {
           sessionType: "ask",
           askSessionId: session.sessionId,
           messageId: assistantRow.messageId,
+          step: item.step,
           model: item.model,
           inputTokens: item.inputTokens,
           outputTokens: item.outputTokens,

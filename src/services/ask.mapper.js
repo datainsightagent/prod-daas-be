@@ -20,6 +20,7 @@ function mapTokenUsage(row) {
     ask_session_id: row.askSessionId,
     onboarding_session_id: row.onboardingSessionId,
     message_id: row.messageId,
+    step: row.step ?? null,
     model: row.model,
     input_tokens: row.inputTokens,
     output_tokens: row.outputTokens,
@@ -112,8 +113,14 @@ export function mapTokenUsageInput(item) {
     return null;
   }
 
+  const step =
+    typeof item.step === "string" && item.step.trim()
+      ? item.step.trim().slice(0, 100)
+      : null;
+
   return {
     model: model.slice(0, 120),
+    step,
     inputTokens: item.input_tokens ?? 0,
     outputTokens: item.output_tokens ?? 0,
     totalTokens: item.total_tokens ?? 0,
