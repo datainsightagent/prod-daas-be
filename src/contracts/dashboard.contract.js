@@ -74,10 +74,24 @@ export const createWidgetBodySchema = z.object({
   sql: z.string().trim().min(1),
   data_source_id: z.string().trim().min(1),
   layout: layoutSchema.optional(),
+  source_ask_session_id: z.string().trim().min(1).optional().nullable(),
+  source_message_id: z.string().trim().min(1).optional().nullable(),
 });
 
 export function parseCreateWidgetBody(raw) {
   return createWidgetBodySchema.safeParse(raw);
+}
+
+export const patchWidgetBodySchema = z.object({
+  component_spec: componentSpecSchema,
+  sql: z.string().trim().min(1),
+  title: z.string().trim().min(1).max(120).optional(),
+  source_ask_session_id: z.string().trim().min(1).optional().nullable(),
+  source_message_id: z.string().trim().min(1).optional().nullable(),
+});
+
+export function parsePatchWidgetBody(raw) {
+  return patchWidgetBodySchema.safeParse(raw);
 }
 
 export function widgetDataResultSchemaForType(type) {
