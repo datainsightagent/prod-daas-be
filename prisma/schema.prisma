@@ -552,6 +552,8 @@ model TokenUsage {
   askSessionId         String?               @map("ask_session_id")
   onboardingSessionId  String?               @map("onboarding_session_id")
   messageId            String?               @map("message_id")
+  /** Pipeline step from WS token_usage (classifier, sql_gen, …). */
+  step                 String?               @db.VarChar(100)
   model                String                @db.VarChar(120)
   inputTokens          Int                   @default(0) @map("input_tokens")
   outputTokens         Int                   @default(0) @map("output_tokens")
@@ -566,6 +568,7 @@ model TokenUsage {
   @@index([askSessionId, createdAt], map: "token_usage_ask_session_created_idx")
   @@index([onboardingSessionId, createdAt], map: "token_usage_onboarding_session_created_idx")
   @@index([messageId], map: "token_usage_message_idx")
+  @@index([tenantId, step], map: "token_usage_tenant_step_idx")
   @@map("token_usage")
 }
 
