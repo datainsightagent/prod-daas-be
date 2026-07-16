@@ -513,6 +513,7 @@ model AskSession {
   generationLogs  AskGenerationLog[]
   tokenUsageRecords TokenUsage[]
   feedbackRecords   Feedback[]
+  sourcedWidgets  Widget[]            @relation("WidgetSourceAskSession")
   createdAt       DateTime            @default(now()) @map("created_at")
   updatedAt       DateTime            @updatedAt @map("updated_at")
 
@@ -537,6 +538,7 @@ model AskMessage {
   generationLogs  AskGenerationLog[]
   tokenUsageRecords TokenUsage[]
   feedbackRecords   Feedback[]
+  sourcedWidgets  Widget[]           @relation("WidgetSourceAskMessage")
   createdAt       DateTime           @default(now()) @map("created_at")
 
   @@unique([sessionId, sequenceOrder], map: "messages_session_sequence_unique")
@@ -704,23 +706,29 @@ model QueryDefinition {
 }
 
 model Widget {
-  widgetId      String       @id @default(cuid()) @map("widget_id")
-  dashboardId   String       @map("dashboard_id")
-  tenantId      String       @map("tenant_id")
-  title         String       @db.VarChar(120)
-  type          String       @db.VarChar(32)
-  queryId       String       @map("query_id")
-  componentSpec Json         @map("component_spec")
-  layout        Json
-  status        WidgetStatus @default(active)
-  version       Int          @default(1)
-  tenant        Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  dashboard     Dashboard    @relation(fields: [dashboardId], references: [dashboardId], onDelete: Cascade)
-  query         QueryDefinition @relation(fields: [queryId], references: [queryId], onDelete: Restrict)
-  createdAt     DateTime     @default(now()) @map("created_at")
-  updatedAt     DateTime     @updatedAt @map("updated_at")
+  widgetId             String       @id @default(cuid()) @map("widget_id")
+  dashboardId          String       @map("dashboard_id")
+  tenantId             String       @map("tenant_id")
+  title                String       @db.VarChar(120)
+  type                 String       @db.VarChar(32)
+  queryId              String       @map("query_id")
+  componentSpec        Json         @map("component_spec")
+  layout               Json
+  status               WidgetStatus @default(active)
+  version              Int          @default(1)
+  sourceAskSessionId   String?      @map("source_ask_session_id")
+  sourceMessageId      String?      @map("source_message_id")
+  tenant               Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  dashboard            Dashboard    @relation(fields: [dashboardId], references: [dashboardId], onDelete: Cascade)
+  query                QueryDefinition @relation(fields: [queryId], references: [queryId], onDelete: Restrict)
+  sourceAskSession     AskSession?  @relation("WidgetSourceAskSession", fields: [sourceAskSessionId], references: [sessionId], onDelete: SetNull)
+  sourceAskMessage     AskMessage?  @relation("WidgetSourceAskMessage", fields: [sourceMessageId], references: [messageId], onDelete: SetNull)
+  createdAt            DateTime     @default(now()) @map("created_at")
+  updatedAt            DateTime     @updatedAt @map("updated_at")
 
   @@index([tenantId, dashboardId, status], map: "widgets_tenant_dashboard_status_idx")
   @@index([tenantId, queryId], map: "widgets_tenant_query_idx")
+  @@index([sourceAskSessionId], map: "widgets_source_ask_session_idx")
+  @@index([sourceMessageId], map: "widgets_source_message_idx")
   @@map("widgets")
 }
