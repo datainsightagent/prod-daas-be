@@ -69,7 +69,7 @@ export function parseWidgetIdParam(raw) {
 }
 
 export const createWidgetBodySchema = z.object({
-  title: z.string().trim().min(1).max(120).optional(),
+  title: z.string().trim().min(1).max(500).optional(),
   component_spec: componentSpecSchema,
   sql: z.string().trim().min(1),
   data_source_id: z.string().trim().min(1),
@@ -85,7 +85,7 @@ export function parseCreateWidgetBody(raw) {
 export const patchWidgetBodySchema = z.object({
   component_spec: componentSpecSchema,
   sql: z.string().trim().min(1),
-  title: z.string().trim().min(1).max(120).optional(),
+  title: z.string().trim().min(1).max(500).optional(),
   source_ask_session_id: z.string().trim().min(1).optional().nullable(),
   source_message_id: z.string().trim().min(1).optional().nullable(),
 });
