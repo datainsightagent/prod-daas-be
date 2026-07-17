@@ -709,7 +709,7 @@ model Widget {
   widgetId             String       @id @default(cuid()) @map("widget_id")
   dashboardId          String       @map("dashboard_id")
   tenantId             String       @map("tenant_id")
-  title                String       @db.VarChar(120)
+  title                String       @db.VarChar(500)
   type                 String       @db.VarChar(32)
   queryId              String       @map("query_id")
   componentSpec        Json         @map("component_spec")
