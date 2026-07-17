@@ -256,7 +256,7 @@ export async function createDashboardWidget({ auth, dashboardId, body }) {
       data: {
         tenantId: auth.tenantId,
         dashboardId: dashboard.dashboardId,
-        title: title.slice(0, 120),
+        title: title.slice(0, 500),
         type: componentSpec.type,
         queryId: queryDef.queryId,
         componentSpec,
@@ -348,7 +348,7 @@ export async function patchWidget({ auth, widgetId, body }) {
     const next = await tx.widget.update({
       where: { widgetId: widget.widgetId },
       data: {
-        title: title.slice(0, 120),
+        title: title.slice(0, 500),
         type: componentSpec.type,
         componentSpec,
         version: { increment: 1 },
