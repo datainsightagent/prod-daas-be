@@ -176,7 +176,9 @@ const tableConfigSchema = z.object({
 const envelopeBase = {
   spec_version: z.literal(SPEC_VERSION),
   id: z.string().trim().min(1).optional(),
-  title: z.string().trim().min(1).max(60),
+  // Widget records support 120 characters; accept descriptive AI titles
+  // without invalidating an otherwise valid visualization spec.
+  title: z.string().trim().min(1).max(120),
   query: querySchema,
   layout: layoutSchema.default({ x: 0, y: 0, w: 6, h: 4 }),
 };
